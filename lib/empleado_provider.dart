@@ -1,20 +1,44 @@
-import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'empleado_model.dart';
-import 'database_helper.dart';
+import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 class EmpleadoProvider with ChangeNotifier {
-  final DatabaseHelper _dbHelper = DatabaseHelper();
+  final SupabaseClient supabase = Supabase.instance.client;
   List<Empleado> _empleados = [];
 
   List<Empleado> get empleados => _empleados;
 
-  Future<void> cargarEmpleados() async {
-    _empleados = await _dbHelper.getEmpleados();
-    notifyListeners();
+  // Agregar un empleado
+  Future<void> agregarEmpleado(Empleado empleado) async {
+    final uuid = Uuid().v4(); // Generar un UUID
+    empleado.id = uuid; // Asignar el UUID al empleado
+
+    await supabase.from('empleados').insert(empleado.toMap());
+    await cargarEmpleados(); // Recargar la lista de empleados
   }
 
-  Future<void> agregarEmpleado(Empleado empleado) async {
-    await _dbHelper.insertEmpleado(empleado);
+  // Obtener todos los empleados
+  Future<void> cargarEmpleados() async {
+    final response = await supabase.from('empleados').select();
+    _empleados = response.map((map) {
+      return Empleado.fromMap(map, map['id'].toString()); // Convertir a String
+    }).toList();
+    notifyListeners(); // Notificar a los widgets que los datos han cambiado
+  }
+
+  // Eliminar un empleado
+  Future<void> eliminarEmpleado(String id) async {
+    await supabase.from('empleados').delete().eq('id', id);
+    await cargarEmpleados();
+  }
+
+  // Actualizar un empleado
+  Future<void> actualizarEmpleado(Empleado empleado) async {
+    await supabase
+        .from('empleados')
+        .update(empleado.toMap())
+        .eq('id', empleado.id!); // Usar .eq() correctamente
     await cargarEmpleados();
   }
 }

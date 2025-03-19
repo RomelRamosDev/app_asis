@@ -38,8 +38,7 @@ class DatabaseHelper {
         nombre TEXT,
         apellido TEXT,
         cedula TEXT UNIQUE,
-        cargo TEXT,
-        facialDataPath TEXT
+        cargo TEXT
       )
     ''');
 
@@ -49,12 +48,15 @@ class DatabaseHelper {
         cedulaEmpleado TEXT,
         horaEntrada TEXT,
         horaSalida TEXT,
-        FOREIGN KEY (cedulaEmpleado) REFERENCES empleados(cedula)
+        FOREIGN KEY (cedulaEmpleado) REFERENCES empleados(cedula) ON DELETE CASCADE
       )
     ''');
+
+    // Crear un índice en la columna cedulaEmpleado para mejorar el rendimiento
+    await db.execute(
+        'CREATE INDEX idx_cedulaEmpleado ON asistencias(cedulaEmpleado)');
   }
 
-// Método para manejar la migración de la base de datos
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE empleados ADD COLUMN facialDataPath TEXT');
@@ -67,12 +69,23 @@ class DatabaseHelper {
     return await db.insert('empleados', empleado.toMap());
   }
 
-  Future<List<Empleado>> getEmpleados() async {
+  Future<int> deleteEmpleado(int id) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('empleados');
-    return List.generate(maps.length, (i) {
-      return Empleado.fromMap(maps[i]);
-    });
+    return await db.delete(
+      'empleados',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> updateEmpleado(Empleado empleado) async {
+    final db = await database;
+    return await db.update(
+      'empleados',
+      empleado.toMap(),
+      where: 'id = ?',
+      whereArgs: [empleado.id],
+    );
   }
 
   // Métodos para asistencias
@@ -81,19 +94,60 @@ class DatabaseHelper {
     return await db.insert('asistencias', asistencia.toMap());
   }
 
-  Future<List<Asistencia>> getAsistencias() async {
+  // Future<List<Asistencia>> getAsistencias() async {
+  //   final db = await database;
+  //   final List<Map<String, dynamic>> maps = await db.query('asistencias');
+  //   return List.generate(maps.length, (i) {
+  //     return Asistencia.fromMap(maps[i]);
+  //   });
+  // }
+
+  // Future<List<Asistencia>> getAsistenciasPorEmpleado(String cedula) async {
+  //   final db = await database;
+  //   final List<Map<String, dynamic>> maps = await db.query(
+  //     'asistencias',
+  //     where: 'cedulaEmpleado = ?',
+  //     whereArgs: [cedula],
+  //   );
+  //   return List.generate(maps.length, (i) {
+  //     return Asistencia.fromMap(maps[i]);
+  //   });
+  // }
+
+  Future<bool> haRegistradoEntrada(String cedula) async {
     final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query('asistencias');
-    return List.generate(maps.length, (i) {
-      return Asistencia.fromMap(maps[i]);
-    });
+    final List<Map<String, dynamic>> maps = await db.query(
+      'asistencias',
+      where: 'cedulaEmpleado = ? AND horaSalida IS NULL',
+      whereArgs: [cedula],
+    );
+    return maps.isNotEmpty;
+  }
+
+  Future<bool> haRegistradoSalida(String cedula) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'asistencias',
+      where: 'cedulaEmpleado = ? AND horaSalida IS NOT NULL',
+      whereArgs: [cedula],
+    );
+    return maps.isNotEmpty;
+  }
+
+  Future<int> updateAsistencia(Asistencia asistencia) async {
+    final db = await database;
+    return await db.update(
+      'asistencias',
+      asistencia.toMap(),
+      where: 'id = ?',
+      whereArgs: [asistencia.id],
+    );
   }
 
   Future<void> deleteDatabase() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'empleados.db');
-    await databaseFactory
-        .deleteDatabase(path); // Usa databaseFactory.deleteDatabase
+    await databaseFactory.deleteDatabase(path);
     print('Base de datos eliminada: $path');
   }
 }

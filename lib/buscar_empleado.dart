@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:camera/camera.dart';
 import 'empleado_model.dart';
 import 'empleado_provider.dart';
 import 'asistencia_provider.dart';
-import 'facial_recognition_service.dart';
-import 'dart:io';
+import 'themes.dart';
 
 class BuscarEmpleado extends StatefulWidget {
   @override
@@ -14,8 +12,6 @@ class BuscarEmpleado extends StatefulWidget {
 
 class _BuscarEmpleadoState extends State<BuscarEmpleado> {
   final _cedulaController = TextEditingController();
-  final FacialRecognitionService _facialRecognitionService =
-      FacialRecognitionService();
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +20,7 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Buscar empleado por cédula o reconocimiento facial'),
+        title: const Text('Motorizados Procontacto'),
       ),
       body: Center(
         child: Padding(
@@ -32,16 +28,23 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                'Ingresa la cédula del empleado',
+              Image.asset(
+                'assets/Logotrns.png', // Ruta de la imagen
+                width: 225, // Ancho de la imagen
+                height: 225, // Alto de la imagen
+                fit: BoxFit.contain, // Ajustar la imagen
+              ),
+              const SizedBox(height: 5), // Espacio entre la imagen y el texto
+              const Text(
+                'Ingresa tu número de cédula',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 10),
               Container(
                 width: 300,
                 child: TextFormField(
                   controller: _cedulaController,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Cédula',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.search),
@@ -50,7 +53,7 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                   maxLength: 10,
                 ),
               ),
-              SizedBox(height: 20),
+              SizedBox(height: 10),
               ElevatedButton(
                 onPressed: () async {
                   final cedula = _cedulaController.text;
@@ -81,45 +84,16 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Empleado no encontrado')),
+                      const SnackBar(content: Text('Empleado no encontrado')),
                     );
                   }
                 },
                 child:
                     Text('Buscar por cédula', style: TextStyle(fontSize: 16)),
                 style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () async {
-                  final empleado = await _validarConReconocimientoFacial(
-                      context, empleadoProvider);
-                  if (empleado != null) {
-                    final haRegistradoEntrada = await asistenciaProvider
-                        .haRegistradoEntrada(empleado.cedula);
-                    final haRegistradoSalida = await asistenciaProvider
-                        .haRegistradoSalida(empleado.cedula);
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => DetalleAsistencia(
-                          empleado: empleado,
-                          haRegistradoEntrada: haRegistradoEntrada,
-                          haRegistradoSalida: haRegistradoSalida,
-                        ),
-                      ),
-                    );
-                  }
-                },
-                child: Text('Validar con reconocimiento facial',
-                    style: TextStyle(fontSize: 16)),
-                style: ElevatedButton.styleFrom(
+                  backgroundColor: greenPalette[
+                      500], // Color de fondo del botón (antes primary)
+                  foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -131,70 +105,6 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
         ),
       ),
     );
-  }
-
-  Future<Empleado?> _validarConReconocimientoFacial(
-      BuildContext context, EmpleadoProvider empleadoProvider) async {
-    final cameras = await availableCameras();
-
-    // Busca la cámara frontal
-    final CameraDescription? frontCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-      orElse: () =>
-          cameras[0], // Si no encuentra la frontal, usa la primera disponible
-    );
-
-    final cameraController =
-        CameraController(frontCamera!, ResolutionPreset.medium);
-    await cameraController.initialize();
-
-    // Verifica si el widget está montado
-    if (!mounted) return null;
-
-    Empleado? empleadoValidado;
-
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          content: CameraPreview(cameraController),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                final image = await cameraController.takePicture();
-                final faces = await _facialRecognitionService
-                    .detectFaces(File(image.path));
-                if (faces.isNotEmpty) {
-                  for (final empleado in empleadoProvider.empleados) {
-                    if (empleado.facialDataPath != null) {
-                      final savedImage = File(empleado.facialDataPath!);
-                      final isMatch = await _facialRecognitionService
-                          .compareFaces(File(image.path), savedImage);
-                      if (isMatch) {
-                        empleadoValidado = empleado;
-                        break;
-                      }
-                    }
-                  }
-                }
-                Navigator.pop(context);
-              },
-              child: Text('Capturar y validar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    await cameraController.dispose();
-
-    if (empleadoValidado == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo validar el empleado')),
-      );
-    }
-
-    return empleadoValidado;
   }
 }
 
@@ -226,6 +136,8 @@ class DetalleAsistencia extends StatelessWidget {
                 onPressed: () => _marcarEntrada(context),
                 child: Text('Marcar entrada'),
                 style: ElevatedButton.styleFrom(
+                  backgroundColor: greenPalette[500],
+                  foregroundColor: Colors.white,
                   padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -237,7 +149,10 @@ class DetalleAsistencia extends StatelessWidget {
                 onPressed: () => _marcarSalida(context),
                 child: Text('Marcar salida'),
                 style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  backgroundColor: greenPalette[500],
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -252,7 +167,32 @@ class DetalleAsistencia extends StatelessWidget {
   void _marcarEntrada(BuildContext context) async {
     final asistenciaProvider =
         Provider.of<AsistenciaProvider>(context, listen: false);
-    await asistenciaProvider.registrarEntrada(empleado.cedula);
+    final horaActual = DateTime.now();
+    final horaLimiteEntrada =
+        DateTime(horaActual.year, horaActual.month, horaActual.day, 8, 30);
+
+    bool atrasoEntrada =
+        horaActual.isAfter(horaLimiteEntrada); // Verificar atraso
+
+    if (atrasoEntrada) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Entrada tardía'),
+          content:
+              Text('${empleado.nombre} ha llegado después de las 8:30 AM.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Aceptar'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Registrar la entrada con el campo atrasoEntrada
+    await asistenciaProvider.registrarEntrada(empleado.cedula, atrasoEntrada);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Entrada registrada para ${empleado.nombre}')),
     );
@@ -262,7 +202,48 @@ class DetalleAsistencia extends StatelessWidget {
   void _marcarSalida(BuildContext context) async {
     final asistenciaProvider =
         Provider.of<AsistenciaProvider>(context, listen: false);
-    await asistenciaProvider.registrarSalida(empleado.cedula);
+    final horaActual = DateTime.now();
+    final horaLimiteSalida =
+        DateTime(horaActual.year, horaActual.month, horaActual.day, 17, 30);
+
+    bool atrasoSalida =
+        horaActual.isAfter(horaLimiteSalida); // Verificar atraso
+
+    // Preguntar si lleva tarjetas
+    final llevaTarjetas = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('¿Lleva tarjetas?'),
+            content: Text(
+                '¿El empleado lleva tarjetas para entregar fuera del horario laboral?'),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(context, false), // No lleva tarjetas
+                child: Text('No'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true), // Lleva tarjetas
+                child: Text('Sí'),
+              ),
+            ],
+          ),
+        ) ??
+        false; // Valor predeterminado: false
+
+    if (atrasoSalida) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text('${empleado.nombre} ha salido después de las 17:30 PM.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+
+    // Registrar la salida con el campo atrasoSalida y llevaTarjetas
+    await asistenciaProvider.registrarSalida(
+        empleado.cedula, atrasoSalida, llevaTarjetas);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Salida registrada para ${empleado.nombre}')),
     );

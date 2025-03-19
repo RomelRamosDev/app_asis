@@ -1,27 +1,26 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
-import 'package:camera/camera.dart';
 import 'facial_recognition_service.dart';
 import 'empleado_model.dart';
 import 'empleado_provider.dart';
 import 'home_navigation.dart';
 import 'asistencia_provider.dart';
 import 'package:path/path.dart' as pth;
-import 'package:sqflite/sqflite.dart';
-
-Future<void> deleteDatabase() async {
-  final dbPath = await getDatabasesPath();
-  final path = pth.join(dbPath, 'empleados.db');
-  await databaseFactory
-      .deleteDatabase(path); // Usa databaseFactory.deleteDatabase
-  print('Base de datos eliminada: $path');
-}
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'conexion_helper.dart';
+import 'themes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await deleteDatabase();
+  // final tieneConexion = await ConexionHelper.tieneConexionInternet();
+
+  await Supabase.initialize(
+    url: 'https://wcmmziogvsoqksndmwkh.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjbW16aW9ndnNvcWtzbmRtd2toIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDE4MzE4MDAsImV4cCI6MjA1NzQwNzgwMH0.MvwueBeb3VI17NT3kIJI5AYUVwcG0cbK4e4fQZMc-yE',
+  );
 
   final empleadoProvider = EmpleadoProvider();
   final asistenciaProvider = AsistenciaProvider();
@@ -46,12 +45,68 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Registro de Empleados',
+      theme: ThemeData(
+        primarySwatch: greenPalette, // Usamos la paleta de colores verdes
+        scaffoldBackgroundColor: Colors.white, // Fondo de las pantallas
+        appBarTheme: AppBarTheme(
+          color: greenPalette[800], // Color del AppBar
+          titleTextStyle: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
       home: HomeNavigation(), // Usar la navegación principal
     );
   }
 }
+// class MyApp extends StatelessWidget {
+//   // final bool tieneConexion;
+
+//   MyApp({required this.tieneConexion});
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return MaterialApp(
+//       title: 'Registro de Empleados',
+//       home: tieneConexion ? HomeNavigation() : SinConexionScreen(),
+//     );
+//   }
+// }
+
+// class SinConexionScreen extends StatelessWidget {
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       body: Center(
+//         child: Column(
+//           mainAxisAlignment: MainAxisAlignment.center,
+//           children: [
+//             Icon(Icons.signal_wifi_off, size: 64, color: Colors.red),
+//             SizedBox(height: 20),
+//             Text(
+//               'Sin conexión a Internet',
+//               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+//             ),
+//             SizedBox(height: 10),
+//             Text(
+//               'Conéctate a una red Wi-Fi o usa datos móviles para continuar.',
+//               textAlign: TextAlign.center,
+//               style: TextStyle(fontSize: 16),
+//             ),
+//           ],
+//         ),
+//       ),
+//     );
+//   }
+// }
 
 class EmpleadoForm extends StatefulWidget {
+  final Empleado? empleado;
+
+  EmpleadoForm({this.empleado});
+
   @override
   _EmpleadoFormState createState() => _EmpleadoFormState();
 }
@@ -62,55 +117,17 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
   final _apellidoController = TextEditingController();
   final _cedulaController = TextEditingController();
   String _cargoSeleccionado = 'Mensajero';
-  String? _facialDataPath;
-  CameraController? _cameraController;
-  final FacialRecognitionService _facialRecognitionService =
-      FacialRecognitionService();
 
   @override
-  void dispose() {
-    _cameraController?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _captureFacialData() async {
-    final cameras = await availableCameras();
-
-    // Busca la cámara frontal
-    final CameraDescription? frontCamera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.front,
-      orElse: () =>
-          cameras[0], // Si no encuentra la frontal, usa la primera disponible
-    );
-
-    _cameraController = CameraController(frontCamera!, ResolutionPreset.medium);
-    await _cameraController!.initialize();
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          content: CameraPreview(_cameraController!),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                final image = await _cameraController!.takePicture();
-                final faces = await _facialRecognitionService
-                    .detectFaces(File(image.path));
-                if (faces.isNotEmpty) {
-                  _facialDataPath = await _facialRecognitionService
-                      .saveFacialData(File(image.path));
-                }
-                Navigator.pop(context);
-              },
-              child: Text('Capturar'),
-            ),
-          ],
-        );
-      },
-    );
+  void initState() {
+    super.initState();
+    if (widget.empleado != null) {
+      // Si se está editando un empleado, llenar los campos con sus datos
+      _nombreController.text = widget.empleado!.nombre;
+      _apellidoController.text = widget.empleado!.apellido;
+      _cedulaController.text = widget.empleado!.cedula;
+      _cargoSeleccionado = widget.empleado!.cargo;
+    }
   }
 
   @override
@@ -119,7 +136,8 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Registrar Empleado'),
+        title: Text(
+            widget.empleado == null ? 'Registrar Empleado' : 'Editar Empleado'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -154,6 +172,13 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, ingresa la cédula';
                   }
+                  if (!RegExp(r'^[0-9]{10}$').hasMatch(value)) {
+                    return 'La cédula debe tener 10 dígitos numéricos';
+                  }
+                  if (empleadoProvider.empleados
+                      .any((emp) => emp.cedula == value)) {
+                    return 'La cédula ya está registrada';
+                  }
                   return null;
                 },
               ),
@@ -175,25 +200,36 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
               ),
               SizedBox(height: 20),
               ElevatedButton(
-                onPressed: _captureFacialData,
-                child: Text('Capturar datos faciales'),
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: greenPalette[
+                      500], // Color de fondo del botón (antes primary)
+                  foregroundColor: Colors
+                      .white, // Color del texto del botón (antes onPrimary)
+                ),
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
                     final empleado = Empleado(
+                      id: widget
+                          .empleado?.id, // Mantener el ID si se está editando
                       nombre: _nombreController.text,
                       apellido: _apellidoController.text,
                       cedula: _cedulaController.text,
                       cargo: _cargoSeleccionado,
-                      facialDataPath: _facialDataPath,
                     );
-                    empleadoProvider.agregarEmpleado(empleado);
+
+                    if (widget.empleado == null) {
+                      // Agregar nuevo empleado
+                      empleadoProvider.agregarEmpleado(empleado);
+                    } else {
+                      // Actualizar empleado existente
+                      empleadoProvider.actualizarEmpleado(empleado);
+                    }
+
                     Navigator.pop(context);
                   }
                 },
-                child: Text('Registrar'),
+                child:
+                    Text(widget.empleado == null ? 'Registrar' : 'Actualizar'),
               ),
             ],
           ),

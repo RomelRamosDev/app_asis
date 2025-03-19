@@ -1,10 +1,10 @@
 class Empleado {
-  int? id;
+  String? id;
   String nombre;
   String apellido;
   String cedula;
   String cargo;
-  String? facialDataPath; // Ruta de la imagen facial
+  // String? facialDataPath; // Ruta de la imagen facial
 
   Empleado({
     this.id,
@@ -12,7 +12,7 @@ class Empleado {
     required this.apellido,
     required this.cedula,
     required this.cargo,
-    this.facialDataPath,
+    // this.facialDataPath,
   });
 
   // Convertir un Empleado a un Map
@@ -23,19 +23,18 @@ class Empleado {
       'apellido': apellido,
       'cedula': cedula,
       'cargo': cargo,
-      'facialDataPath': facialDataPath,
+      // 'facialDataPath': facialDataPath,
     };
   }
 
   // Convertir un Map a un Empleado
-  factory Empleado.fromMap(Map<String, dynamic> map) {
+  factory Empleado.fromMap(Map<String, dynamic> map, String id) {
     return Empleado(
-      id: map['id'],
+      id: id,
       nombre: map['nombre'],
       apellido: map['apellido'],
       cedula: map['cedula'],
       cargo: map['cargo'],
-      facialDataPath: map['facialDataPath'],
     );
   }
 }
