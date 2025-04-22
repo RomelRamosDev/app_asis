@@ -10,6 +10,9 @@ import 'package:path/path.dart' as pth;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'conexion_helper.dart';
 import 'themes.dart';
+import 'key.dart';
+import 'marcacion_automatica_service.dart';
+import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,9 +20,8 @@ void main() async {
   // final tieneConexion = await ConexionHelper.tieneConexionInternet();
 
   await Supabase.initialize(
-    url: 'https://wcmmziogvsoqksndmwkh.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjbW16aW9ndnNvcWtzbmRtd2toIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDE4MzE4MDAsImV4cCI6MjA1NzQwNzgwMH0.MvwueBeb3VI17NT3kIJI5AYUVwcG0cbK4e4fQZMc-yE',
+    url: url,
+    anonKey: anonKey,
   );
 
   final empleadoProvider = EmpleadoProvider();
@@ -28,6 +30,8 @@ void main() async {
   // Cargar datos al iniciar
   await empleadoProvider.cargarEmpleados();
   await asistenciaProvider.cargarAsistencias();
+
+  await MarcacionAutomaticaService.init();
 
   runApp(
     MultiProvider(
@@ -43,6 +47,8 @@ void main() async {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    _iniciarServicioMarcacionAutomatica(context);
+
     return MaterialApp(
       title: 'Registro de Empleados',
       theme: ThemeData(
@@ -57,8 +63,21 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: HomeNavigation(), // Usar la navegación principal
+      home: HomeNavigation(),
+      debugShowCheckedModeBanner: false, // Usar la navegación principal
     );
+  }
+
+  void _iniciarServicioMarcacionAutomatica(BuildContext context) {
+    // Verificar cada minuto si hay marcaciones automáticas pendientes
+    Timer.periodic(const Duration(minutes: 1), (timer) {
+      MarcacionAutomaticaService.verificarMarcacionesAutomaticas(context);
+    });
+
+    // Verificar inmediatamente al iniciar la app
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      MarcacionAutomaticaService.verificarMarcacionesAutomaticas(context);
+    });
   }
 }
 // class MyApp extends StatelessWidget {

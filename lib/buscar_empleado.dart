@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'empleado_model.dart';
 import 'empleado_provider.dart';
 import 'asistencia_provider.dart';
+import 'aistencia_model.dart';
 import 'themes.dart';
 
 class BuscarEmpleado extends StatefulWidget {
@@ -69,16 +70,12 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                   if (empleado.cedula.isNotEmpty) {
                     final haRegistradoEntrada =
                         await asistenciaProvider.haRegistradoEntrada(cedula);
-                    final haRegistradoSalida =
-                        await asistenciaProvider.haRegistradoSalida(cedula);
-
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => DetalleAsistencia(
                           empleado: empleado,
                           haRegistradoEntrada: haRegistradoEntrada,
-                          haRegistradoSalida: haRegistradoSalida,
                         ),
                       ),
                     );
@@ -110,13 +107,11 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
 
 class DetalleAsistencia extends StatelessWidget {
   final Empleado empleado;
-  final bool haRegistradoEntrada;
-  final bool haRegistradoSalida;
+  final haRegistradoEntrada;
 
   DetalleAsistencia({
     required this.empleado,
     required this.haRegistradoEntrada,
-    required this.haRegistradoSalida,
   });
 
   @override
@@ -127,39 +122,62 @@ class DetalleAsistencia extends StatelessWidget {
       appBar: AppBar(
         title: Text('Asistencia de ${empleado.nombre}'),
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (!haRegistradoEntrada)
-              ElevatedButton(
-                onPressed: () => _marcarEntrada(context),
-                child: Text('Marcar entrada'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: greenPalette[500],
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+      body: FutureBuilder<List<Asistencia>>(
+        future: asistenciaProvider.getAsistenciasPorEmpleado(empleado.cedula),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text('Error al cargar las asistencias'));
+          }
+
+          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(child: Text('No hay registros de asistencia'));
+          }
+
+          final asistencias = snapshot.data!;
+          final ultimaAsistencia = asistencias.last;
+
+          final haRegistradoSalida = ultimaAsistencia.horaSalida != null;
+
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (!haRegistradoEntrada)
+                  ElevatedButton(
+                    onPressed: () => _marcarEntrada(context),
+                    child: Text('Marcar entrada'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: greenPalette[500],
+                      foregroundColor: Colors.white,
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            if (haRegistradoEntrada && !haRegistradoSalida)
-              ElevatedButton(
-                onPressed: () => _marcarSalida(context),
-                child: Text('Marcar salida'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: greenPalette[500],
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                if (haRegistradoEntrada && !haRegistradoSalida)
+                  ElevatedButton(
+                    onPressed: () => _marcarSalida(context),
+                    child: Text('Marcar salida'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: greenPalette[500],
+                      foregroundColor: Colors.white,
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-          ],
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -169,10 +187,69 @@ class DetalleAsistencia extends StatelessWidget {
         Provider.of<AsistenciaProvider>(context, listen: false);
     final horaActual = DateTime.now();
     final horaLimiteEntrada =
-        DateTime(horaActual.year, horaActual.month, horaActual.day, 8, 30);
+        DateTime(horaActual.year, horaActual.month, horaActual.day, 8, 31);
 
     bool atrasoEntrada =
         horaActual.isAfter(horaLimiteEntrada); // Verificar atraso
+
+    // Controlador para el campo de texto de observaciones
+    final observacionesController = TextEditingController();
+
+    // Mostrar diálogo para ingresar observaciones
+    final observaciones = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Observaciones (opcional)'),
+        content: TextFormField(
+          controller: observacionesController, // Asignar el controlador
+          decoration: const InputDecoration(
+            hintText: 'Ingrese alguna observación',
+            border: OutlineInputBorder(),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: Colors.green, // Color del borde cuando está enfocado
+                width: 2.0, // Grosor del borde
+              ),
+            ),
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.pop(context), // Cancelar
+            child: Text('Cancelar'),
+          ),
+          TextButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () {
+              // Obtener el valor del campo de texto y cerrar el diálogo
+              Navigator.pop(context, observacionesController.text);
+            },
+            child: Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+
+    // Si el usuario hizo clic en "Cancelar", no registrar la entrada
+    if (observaciones == null) {
+      return; // Salir del método sin hacer nada
+    }
 
     if (atrasoEntrada) {
       showDialog(
@@ -180,7 +257,7 @@ class DetalleAsistencia extends StatelessWidget {
         builder: (context) => AlertDialog(
           title: Text('Entrada tardía'),
           content:
-              Text('${empleado.nombre} ha llegado después de las 8:30 AM.'),
+              Text('${empleado.nombre} ha llegado después de las 8:31 AM.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -191,8 +268,9 @@ class DetalleAsistencia extends StatelessWidget {
       );
     }
 
-    // Registrar la entrada con el campo atrasoEntrada
-    await asistenciaProvider.registrarEntrada(empleado.cedula, atrasoEntrada);
+    // Registrar la entrada con el campo observaciones
+    await asistenciaProvider.registrarEntrada(
+        empleado.cedula, atrasoEntrada, observaciones);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Entrada registrada para ${empleado.nombre}')),
     );
@@ -204,10 +282,69 @@ class DetalleAsistencia extends StatelessWidget {
         Provider.of<AsistenciaProvider>(context, listen: false);
     final horaActual = DateTime.now();
     final horaLimiteSalida =
-        DateTime(horaActual.year, horaActual.month, horaActual.day, 17, 30);
+        DateTime(horaActual.year, horaActual.month, horaActual.day, 17, 00);
 
     bool atrasoSalida =
         horaActual.isAfter(horaLimiteSalida); // Verificar atraso
+
+    // Controlador para el campo de texto de observaciones
+    final observacionesController = TextEditingController();
+
+    // Mostrar diálogo para ingresar observaciones
+    final observaciones = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Observaciones (opcional)'),
+        content: TextFormField(
+          controller: observacionesController, // Asignar el controlador
+          decoration: const InputDecoration(
+            hintText: 'Ingrese alguna observación',
+            border: OutlineInputBorder(),
+            focusedBorder: OutlineInputBorder(
+              borderSide: BorderSide(
+                color: Colors.green, // Color del borde cuando está enfocado
+                width: 2.0, // Grosor del borde
+              ),
+            ),
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.pop(context), // Cancelar
+            child: Text('Cancelar'),
+          ),
+          TextButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () {
+              // Obtener el valor del campo de texto y cerrar el diálogo
+              Navigator.pop(context, observacionesController.text);
+            },
+            child: Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+
+    // Si el usuario hizo clic en "Cancelar", no registrar la salida
+    if (observaciones == null) {
+      return; // Salir del método sin hacer nada
+    }
 
     // Preguntar si lleva tarjetas
     final llevaTarjetas = await showDialog<bool>(
@@ -235,15 +372,15 @@ class DetalleAsistencia extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content:
-              Text('${empleado.nombre} ha salido después de las 17:30 PM.'),
+              Text('${empleado.nombre} ha salido después de las 17:00 PM.'),
           backgroundColor: Colors.green,
         ),
       );
     }
 
-    // Registrar la salida con el campo atrasoSalida y llevaTarjetas
+    // Registrar la salida con el campo observaciones
     await asistenciaProvider.registrarSalida(
-        empleado.cedula, atrasoSalida, llevaTarjetas);
+        empleado.cedula, atrasoSalida, llevaTarjetas, observaciones);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Salida registrada para ${empleado.nombre}')),
     );

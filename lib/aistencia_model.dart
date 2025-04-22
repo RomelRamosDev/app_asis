@@ -5,7 +5,10 @@ class Asistencia {
   DateTime? horaSalida;
   bool atrasoEntrada; // Nuevo campo para registrar atrasos en la entrada
   bool atrasoSalida; // Nuevo campo para registrar atrasos en la salida
-  bool llevaTarjetas; // Nuevo campo para registrar si lleva tarjetas
+  bool llevaTarjetas;
+  String? observaciones; // Nuevo campo para registrar si lleva tarjetas
+  bool entradaAutomatica; // Nuevo campo
+  bool salidaAutomatica;
 
   Asistencia({
     this.id,
@@ -15,6 +18,9 @@ class Asistencia {
     this.atrasoEntrada = false, // Valor por defecto: false
     this.atrasoSalida = false, // Valor por defecto: false
     this.llevaTarjetas = false, // Valor por defecto: false
+    this.observaciones,
+    this.entradaAutomatica = false, // Valor por defecto
+    this.salidaAutomatica = false,
   });
 
   // Convertir una Asistencia a un Map
@@ -27,6 +33,9 @@ class Asistencia {
       'atrasoEntrada': atrasoEntrada, // Incluir el campo atrasoEntrada
       'atrasoSalida': atrasoSalida, // Incluir el campo atrasoSalida
       'llevaTarjetas': llevaTarjetas, // Incluir el campo llevaTarjetas
+      'observaciones': observaciones,
+      'entradaAutomatica': entradaAutomatica,
+      'salidaAutomatica': salidaAutomatica,
     };
   }
 
@@ -35,14 +44,16 @@ class Asistencia {
     return Asistencia(
       id: id,
       cedulaEmpleado: map['cedulaEmpleado'],
-      horaEntrada: DateTime.parse(map['horaEntrada']),
-      horaSalida:
-          map['horaSalida'] != null ? DateTime.parse(map['horaSalida']) : null,
-      atrasoEntrada:
-          map['atrasoEntrada'] ?? false, // Leer el campo atrasoEntrada
-      atrasoSalida: map['atrasoSalida'] ?? false, // Leer el campo atrasoSalida
-      llevaTarjetas:
-          map['llevaTarjetas'] ?? false, // Leer el campo llevaTarjetas
+      horaEntrada: DateTime.parse(map['horaEntrada']), // Convertir a local
+      horaSalida: map['horaSalida'] != null
+          ? DateTime.parse(map['horaSalida']) // Convertir a local
+          : null,
+      atrasoEntrada: map['atrasoEntrada'] ?? false,
+      atrasoSalida: map['atrasoSalida'] ?? false,
+      llevaTarjetas: map['llevaTarjetas'] ?? false,
+      observaciones: map['observaciones'],
+      entradaAutomatica: map['entradaAutomatica'] ?? false,
+      salidaAutomatica: map['salidaAutomatica'] ?? false,
     );
   }
 }

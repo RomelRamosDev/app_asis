@@ -4,7 +4,10 @@ class Empleado {
   String apellido;
   String cedula;
   String cargo;
-  // String? facialDataPath; // Ruta de la imagen facial
+  bool enVacaciones;
+  bool enPermisoMedico;
+  DateTime? fechaInicioEstado;
+  DateTime? fechaFinEstado;
 
   Empleado({
     this.id,
@@ -12,7 +15,10 @@ class Empleado {
     required this.apellido,
     required this.cedula,
     required this.cargo,
-    // this.facialDataPath,
+    this.enVacaciones = false,
+    this.enPermisoMedico = false,
+    this.fechaInicioEstado,
+    this.fechaFinEstado,
   });
 
   // Convertir un Empleado a un Map
@@ -23,7 +29,10 @@ class Empleado {
       'apellido': apellido,
       'cedula': cedula,
       'cargo': cargo,
-      // 'facialDataPath': facialDataPath,
+      'enVacaciones': enVacaciones,
+      'enPermisoMedico': enPermisoMedico,
+      'fechaInicioEstado': fechaInicioEstado?.toIso8601String(),
+      'fechaFinEstado': fechaFinEstado?.toIso8601String(),
     };
   }
 
@@ -35,6 +44,14 @@ class Empleado {
       apellido: map['apellido'],
       cedula: map['cedula'],
       cargo: map['cargo'],
+      enVacaciones: map['enVacaciones'] ?? false,
+      enPermisoMedico: map['enPermisoMedico'] ?? false,
+      fechaInicioEstado: map['fechaInicioEstado'] != null
+          ? DateTime.parse(map['fechaInicioEstado'])
+          : null,
+      fechaFinEstado: map['fechaFinEstado'] != null
+          ? DateTime.parse(map['fechaFinEstado'])
+          : null,
     );
   }
 }

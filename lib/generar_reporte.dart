@@ -359,6 +359,10 @@ class _GenerarReporteState extends State<GenerarReporte> {
         'cargo': empleado.cargo,
         'horaEntrada': asistencia.horaEntrada,
         'horaSalida': asistencia.horaSalida,
+        'atrasoEntrada': asistencia.atrasoEntrada, // Nuevo campo
+        'atrasoSalida': asistencia.atrasoSalida, // Nuevo campo
+        'llevaTarjetas': asistencia.llevaTarjetas, // Nuevo campo
+        'observaciones': asistencia.observaciones, // Nuevo campo
       };
     }).where((asistencia) {
       switch (filtro) {
@@ -405,21 +409,41 @@ class _GenerarReporteState extends State<GenerarReporte> {
 
   // Método para generar el archivo Excel
   Future<String> _generarExcel(List<Map<String, dynamic>> asistencias) async {
-    final excelFile = excel.Excel.createExcel(); // Usar 'excel.' como prefijo
-    final sheet = excelFile['Asistencias'];
+    final excelFile = excel.Excel.createExcel(); // Crear un archivo Excel
+    final sheet = excelFile['Asistencias']; // Crear una hoja
 
     // Encabezados
-    sheet.appendRow(
-        ['Nombre', 'Cédula', 'Cargo', 'Hora Entrada', 'Hora Salida']);
+    sheet.appendRow([
+      'Nombre',
+      'Cédula',
+      'Cargo',
+      'Hora Entrada',
+      'Hora Salida',
+      'Atrasos',
+      'Llevar Tarjetas',
+      'Observaciones',
+    ]);
 
     // Datos
     asistencias.forEach((asistencia) {
+      final atrasoEntrada = asistencia['atrasoEntrada'] ?? false;
+      final atrasoSalida = asistencia['atrasoSalida'] ?? false;
+      final llevaTarjetas = asistencia['llevaTarjetas'] ?? false;
+      final observaciones = asistencia['observaciones'] ?? '';
+
       sheet.appendRow([
-        asistencia['nombre'],
-        asistencia['cedula'],
-        asistencia['cargo'],
-        asistencia['horaEntrada'].toString(),
-        asistencia['horaSalida']?.toString() ?? 'No registrada',
+        asistencia['nombre'], // Asignar directamente como String
+        asistencia['cedula'], // Asignar directamente como String
+        asistencia['cargo'], // Asignar directamente como String
+        asistencia['horaEntrada']
+            .toString(), // Asignar directamente como String
+        asistencia['horaSalida']?.toString() ??
+            'No registrada', // Asignar directamente como String
+        atrasoEntrada || atrasoSalida
+            ? 'Sí'
+            : 'No', // Asignar directamente como String
+        llevaTarjetas ? 'Sí' : 'No', // Asignar directamente como String
+        observaciones, // Asignar directamente como String
       ]);
     });
 
