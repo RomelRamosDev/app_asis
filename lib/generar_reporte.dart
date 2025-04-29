@@ -258,6 +258,7 @@ class _GenerarReporteState extends State<GenerarReporte> {
                               apellido: '',
                               cedula: '',
                               cargo: '',
+                              sedeId: '',
                             ),
                           );
 
@@ -350,6 +351,7 @@ class _GenerarReporteState extends State<GenerarReporte> {
           apellido: '',
           cedula: '',
           cargo: '',
+          sedeId: '',
         ),
       );
 

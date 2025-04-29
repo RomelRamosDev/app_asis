@@ -6,13 +6,20 @@ import 'empleado_provider.dart';
 import 'asistencia_provider.dart';
 import 'aistencia_model.dart';
 import 'marcacion_automatica_service.dart';
+import 'sede_provider.dart';
 
 class ListaAsistencia extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final sedeProvider = Provider.of<SedeProvider>(context);
     final empleadoProvider = Provider.of<EmpleadoProvider>(context);
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
-    final empleados = empleadoProvider.empleados;
+
+    // Filtrar empleados por sede actual
+    final empleados = empleadoProvider.empleados
+        .where((e) => e.sedeId == sedeProvider.sedeActual?.id)
+        .toList();
+
     final fechaActual = DateTime.now();
     final fechaActualFormateada = DateFormat('yyyy-MM-dd').format(fechaActual);
 
@@ -22,27 +29,78 @@ class ListaAsistencia extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Registro de Asistencia'),
+        title: Text('Asistencia - ${sedeProvider.sedeActual?.nombre ?? ''}'),
         actions: [
           IconButton(
             icon: Icon(Icons.calendar_today),
             onPressed: () => _mostrarResumenVacaciones(context, empleados),
           ),
+          IconButton(
+            icon: Icon(Icons.business),
+            tooltip: 'Sede actual',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                      'Sede: ${sedeProvider.sedeActual?.nombre ?? 'No seleccionada'}'),
+                ),
+              );
+            },
+          ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await asistenciaProvider.cargarAsistencias();
-          await empleadoProvider.cargarEmpleados();
+      body: Builder(
+        builder: (context) {
+          if (sedeProvider.sedeActual == null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.business, size: 64, color: Colors.grey),
+                  SizedBox(height: 20),
+                  Text('No se ha seleccionado sede',
+                      style: TextStyle(fontSize: 18)),
+                  SizedBox(height: 10),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pushReplacementNamed(
+                          context, '/seleccionar_sede');
+                    },
+                    child: Text('Seleccionar sede'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              await asistenciaProvider.cargarAsistencias();
+              await empleadoProvider.cargarEmpleados();
+            },
+            child: empleados.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.people_outline,
+                            size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text('No hay empleados en esta sede',
+                            style: TextStyle(fontSize: 18)),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: empleados.length,
+                    itemBuilder: (context, index) {
+                      final empleado = empleados[index];
+                      return _buildEmpleadoTile(context, empleado,
+                          asistenciaProvider, fechaActualFormateada);
+                    },
+                  ),
+          );
         },
-        child: ListView.builder(
-          itemCount: empleados.length,
-          itemBuilder: (context, index) {
-            final empleado = empleados[index];
-            return _buildEmpleadoTile(
-                context, empleado, asistenciaProvider, fechaActualFormateada);
-          },
-        ),
       ),
     );
   }

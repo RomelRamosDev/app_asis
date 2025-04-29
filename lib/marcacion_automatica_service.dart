@@ -23,7 +23,7 @@ void callbackDispatcher() {
       if (ahora.hour == 10 && ahora.minute == 0) {
         await MarcacionAutomaticaService.marcarEntradasAutomaticas(
             empleadoProvider, asistenciaProvider, hoy);
-      } else if (ahora.hour == 19 && ahora.minute == 0) {
+      } else if (ahora.hour == 19 && ahora.minute == 30) {
         await MarcacionAutomaticaService.marcarSalidasAutomaticas(
             empleadoProvider, asistenciaProvider, hoy);
       }
@@ -64,7 +64,7 @@ class MarcacionAutomaticaService {
     if (ahora.hour == 10 && ahora.minute == 0) {
       await marcarEntradasAutomaticas(
           empleadoProvider, asistenciaProvider, hoy);
-    } else if (ahora.hour == 19 && ahora.minute == 0) {
+    } else if (ahora.hour == 19 && ahora.minute == 30) {
       await marcarSalidasAutomaticas(empleadoProvider, asistenciaProvider, hoy);
     }
   }

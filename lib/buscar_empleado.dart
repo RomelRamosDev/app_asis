@@ -20,9 +20,15 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Motorizados Procontacto'),
-      ),
+      appBar: AppBar(title: const Text('Motorizados Procontacto'), actions: [
+        IconButton(
+          icon: Icon(Icons.business),
+          tooltip: 'Sede actual',
+          onPressed: () {
+            Navigator.pushReplacementNamed(context, '/seleccionar_sede');
+          },
+        ),
+      ]),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -65,6 +71,7 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                       apellido: '',
                       cedula: '',
                       cargo: '',
+                      sedeId: '',
                     ),
                   );
                   if (empleado.cedula.isNotEmpty) {

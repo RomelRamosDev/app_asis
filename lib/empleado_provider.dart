@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'empleado_model.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
+import 'package:app_asis/sede_provider.dart';
 
 class EmpleadoProvider with ChangeNotifier {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -13,7 +14,8 @@ class EmpleadoProvider with ChangeNotifier {
   Future<void> agregarEmpleado(Empleado empleado) async {
     final uuid = Uuid().v4(); // Generar un UUID
     empleado.id = uuid; // Asignar el UUID al empleado
-
+    assert(
+        empleado.sedeId.isNotEmpty, 'El empleado debe tener una sede asignada');
     await supabase.from('empleados').insert(empleado.toMap());
     await cargarEmpleados(); // Recargar la lista de empleados
   }

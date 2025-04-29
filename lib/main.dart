@@ -1,33 +1,32 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
 import 'package:provider/provider.dart';
-import 'facial_recognition_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'asistencia_provider.dart';
 import 'empleado_model.dart';
 import 'empleado_provider.dart';
 import 'home_navigation.dart';
-import 'asistencia_provider.dart';
-import 'package:path/path.dart' as pth;
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'conexion_helper.dart';
-import 'themes.dart';
 import 'key.dart';
 import 'marcacion_automatica_service.dart';
+import 'seleccionar_sede.dart';
+import 'sede_provider.dart';
+import 'themes.dart';
 import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // final tieneConexion = await ConexionHelper.tieneConexionInternet();
 
   await Supabase.initialize(
     url: url,
     anonKey: anonKey,
   );
 
+  // Inicializar providers
   final empleadoProvider = EmpleadoProvider();
   final asistenciaProvider = AsistenciaProvider();
+  final sedeProvider = SedeProvider();
 
-  // Cargar datos al iniciar
+  // Cargar datos iniciales
+  await sedeProvider.cargarSedes();
   await empleadoProvider.cargarEmpleados();
   await asistenciaProvider.cargarAsistencias();
 
@@ -36,95 +35,87 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => sedeProvider),
         ChangeNotifierProvider(create: (_) => empleadoProvider),
         ChangeNotifierProvider(create: (_) => asistenciaProvider),
       ],
-      child: MyApp(),
+      child: const MyApp(),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     _iniciarServicioMarcacionAutomatica(context);
+    final sedeActual = Provider.of<SedeProvider>(context).sedeActual;
 
     return MaterialApp(
       title: 'Registro de Empleados',
       theme: ThemeData(
-        primarySwatch: greenPalette, // Usamos la paleta de colores verdes
-        scaffoldBackgroundColor: Colors.white, // Fondo de las pantallas
+        primarySwatch: greenPalette,
+        scaffoldBackgroundColor: Colors.white,
         appBarTheme: AppBarTheme(
-          color: greenPalette[800], // Color del AppBar
-          titleTextStyle: TextStyle(
+          color: greenPalette[800],
+          titleTextStyle: const TextStyle(
             color: Colors.white,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
-      home: HomeNavigation(),
-      debugShowCheckedModeBanner: false, // Usar la navegación principal
+      home: sedeActual == null ? SeleccionarSedeScreen() : HomeNavigation(),
+      debugShowCheckedModeBanner: false,
+      routes: {
+        '/seleccionar_sede': (context) => SeleccionarSedeScreen(),
+        '/empleado_form': (context) => const EmpleadoFormWrapper(),
+      },
     );
   }
 
   void _iniciarServicioMarcacionAutomatica(BuildContext context) {
-    // Verificar cada minuto si hay marcaciones automáticas pendientes
     Timer.periodic(const Duration(minutes: 1), (timer) {
       MarcacionAutomaticaService.verificarMarcacionesAutomaticas(context);
     });
 
-    // Verificar inmediatamente al iniciar la app
     WidgetsBinding.instance.addPostFrameCallback((_) {
       MarcacionAutomaticaService.verificarMarcacionesAutomaticas(context);
     });
   }
 }
-// class MyApp extends StatelessWidget {
-//   // final bool tieneConexion;
 
-//   MyApp({required this.tieneConexion});
+class EmpleadoFormWrapper extends StatelessWidget {
+  const EmpleadoFormWrapper({super.key});
 
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(
-//       title: 'Registro de Empleados',
-//       home: tieneConexion ? HomeNavigation() : SinConexionScreen(),
-//     );
-//   }
-// }
+  @override
+  Widget build(BuildContext context) {
+    final sedeActual = Provider.of<SedeProvider>(context).sedeActual;
 
-// class SinConexionScreen extends StatelessWidget {
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       body: Center(
-//         child: Column(
-//           mainAxisAlignment: MainAxisAlignment.center,
-//           children: [
-//             Icon(Icons.signal_wifi_off, size: 64, color: Colors.red),
-//             SizedBox(height: 20),
-//             Text(
-//               'Sin conexión a Internet',
-//               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-//             ),
-//             SizedBox(height: 10),
-//             Text(
-//               'Conéctate a una red Wi-Fi o usa datos móviles para continuar.',
-//               textAlign: TextAlign.center,
-//               style: TextStyle(fontSize: 16),
-//             ),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
+    if (sedeActual == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => SeleccionarSedeScreen()),
+        );
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return EmpleadoForm(sedeId: sedeActual.id);
+  }
+}
 
 class EmpleadoForm extends StatefulWidget {
+  final String sedeId;
   final Empleado? empleado;
 
-  EmpleadoForm({this.empleado});
+  const EmpleadoForm({
+    super.key,
+    required this.sedeId,
+    this.empleado,
+  });
 
   @override
   _EmpleadoFormState createState() => _EmpleadoFormState();
@@ -141,7 +132,6 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
   void initState() {
     super.initState();
     if (widget.empleado != null) {
-      // Si se está editando un empleado, llenar los campos con sus datos
       _nombreController.text = widget.empleado!.nombre;
       _apellidoController.text = widget.empleado!.apellido;
       _cedulaController.text = widget.empleado!.cedula;
@@ -166,7 +156,7 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
             children: [
               TextFormField(
                 controller: _nombreController,
-                decoration: InputDecoration(labelText: 'Nombre'),
+                decoration: const InputDecoration(labelText: 'Nombre'),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, ingresa el nombre';
@@ -176,7 +166,7 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
               ),
               TextFormField(
                 controller: _apellidoController,
-                decoration: InputDecoration(labelText: 'Apellido'),
+                decoration: const InputDecoration(labelText: 'Apellido'),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, ingresa el apellido';
@@ -186,7 +176,7 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
               ),
               TextFormField(
                 controller: _cedulaController,
-                decoration: InputDecoration(labelText: 'Cédula'),
+                decoration: const InputDecoration(labelText: 'Cédula'),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, ingresa la cédula';
@@ -194,8 +184,9 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
                   if (!RegExp(r'^[0-9]{10}$').hasMatch(value)) {
                     return 'La cédula debe tener 10 dígitos numéricos';
                   }
-                  if (empleadoProvider.empleados
-                      .any((emp) => emp.cedula == value)) {
+                  if (widget.empleado == null &&
+                      empleadoProvider.empleados
+                          .any((emp) => emp.cedula == value)) {
                     return 'La cédula ya está registrada';
                   }
                   return null;
@@ -203,7 +194,7 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
               ),
               DropdownButtonFormField<String>(
                 value: _cargoSeleccionado,
-                decoration: InputDecoration(labelText: 'Cargo'),
+                decoration: const InputDecoration(labelText: 'Cargo'),
                 items: <String>['Mensajero', 'Supervisor', 'Call Center']
                     .map<DropdownMenuItem<String>>((String valor) {
                   return DropdownMenuItem<String>(
@@ -217,34 +208,31 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
                   });
                 },
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: greenPalette[
-                      500], // Color de fondo del botón (antes primary)
-                  foregroundColor: Colors
-                      .white, // Color del texto del botón (antes onPrimary)
+                  backgroundColor: greenPalette[500],
+                  foregroundColor: Colors.white,
                 ),
-                onPressed: () {
+                onPressed: () async {
                   if (_formKey.currentState!.validate()) {
                     final empleado = Empleado(
-                      id: widget
-                          .empleado?.id, // Mantener el ID si se está editando
+                      id: widget.empleado?.id,
                       nombre: _nombreController.text,
                       apellido: _apellidoController.text,
                       cedula: _cedulaController.text,
                       cargo: _cargoSeleccionado,
+                      sedeId:
+                          widget.sedeId, // Asignamos la sede automáticamente
                     );
 
                     if (widget.empleado == null) {
-                      // Agregar nuevo empleado
-                      empleadoProvider.agregarEmpleado(empleado);
+                      await empleadoProvider.agregarEmpleado(empleado);
                     } else {
-                      // Actualizar empleado existente
-                      empleadoProvider.actualizarEmpleado(empleado);
+                      await empleadoProvider.actualizarEmpleado(empleado);
                     }
 
-                    Navigator.pop(context);
+                    if (mounted) Navigator.pop(context);
                   }
                 },
                 child:

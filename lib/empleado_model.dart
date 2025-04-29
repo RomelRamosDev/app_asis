@@ -8,6 +8,7 @@ class Empleado {
   bool enPermisoMedico;
   DateTime? fechaInicioEstado;
   DateTime? fechaFinEstado;
+  final String sedeId;
 
   Empleado({
     this.id,
@@ -19,6 +20,7 @@ class Empleado {
     this.enPermisoMedico = false,
     this.fechaInicioEstado,
     this.fechaFinEstado,
+    required this.sedeId,
   });
 
   // Convertir un Empleado a un Map
@@ -33,6 +35,7 @@ class Empleado {
       'enPermisoMedico': enPermisoMedico,
       'fechaInicioEstado': fechaInicioEstado?.toIso8601String(),
       'fechaFinEstado': fechaFinEstado?.toIso8601String(),
+      'sede_id': sedeId,
     };
   }
 
@@ -52,6 +55,7 @@ class Empleado {
       fechaFinEstado: map['fechaFinEstado'] != null
           ? DateTime.parse(map['fechaFinEstado'])
           : null,
+      sedeId: map['sede_id'] as String,
     );
   }
 }
