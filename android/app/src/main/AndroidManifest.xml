@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:tools="http://schemas.android.com/tools">
     
         <!-- Permisos para usar la cámara y el almacenamiento -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -13,12 +14,17 @@
     <application
         android:label="MotoProcAsis"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        tools:ignore="Instantiatable"> 
+        
        
-        <service
-            android:name="vn.hunghd.flutterdownloader.DownloadWorker"
-            android:exported="false" />
-
+       <service
+         android:name="vn.hunghd.flutterdownloader.DownloadWorker"
+         android:enabled="true"
+         android:exported="false"
+         android:permission="android.permission.BIND_JOB_SERVICE">
+       </service>
+        
         <provider
         android:name="androidx.startup.InitializationProvider"
         android:authorities="${applicationId}.androidx-startup"

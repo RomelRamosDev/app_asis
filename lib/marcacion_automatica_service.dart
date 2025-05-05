@@ -4,6 +4,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:intl/intl.dart';
 import 'empleado_provider.dart';
 import 'asistencia_provider.dart';
+import 'sede_provider.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -15,17 +16,19 @@ void callbackDispatcher() {
       // Necesitamos inicializar los providers manualmente en background
       final empleadoProvider = EmpleadoProvider();
       final asistenciaProvider = AsistenciaProvider();
+      final sedeProvider = SedeProvider();
 
       // Cargar datos necesarios
       await empleadoProvider.cargarEmpleados();
       await asistenciaProvider.cargarAsistencias();
+      await sedeProvider.cargarSedes();
 
       if (ahora.hour == 10 && ahora.minute == 0) {
         await MarcacionAutomaticaService.marcarEntradasAutomaticas(
-            empleadoProvider, asistenciaProvider, hoy);
+            empleadoProvider, asistenciaProvider, sedeProvider, hoy);
       } else if (ahora.hour == 19 && ahora.minute == 30) {
         await MarcacionAutomaticaService.marcarSalidasAutomaticas(
-            empleadoProvider, asistenciaProvider, hoy);
+            empleadoProvider, asistenciaProvider, sedeProvider, hoy);
       }
     } catch (e) {
       debugPrint('Error en ejecución background: $e');
@@ -60,18 +63,21 @@ class MarcacionAutomaticaService {
         Provider.of<EmpleadoProvider>(context, listen: false);
     final asistenciaProvider =
         Provider.of<AsistenciaProvider>(context, listen: false);
+    final sedeProvider = Provider.of<SedeProvider>(context, listen: false);
 
     if (ahora.hour == 10 && ahora.minute == 0) {
       await marcarEntradasAutomaticas(
-          empleadoProvider, asistenciaProvider, hoy);
+          empleadoProvider, asistenciaProvider, sedeProvider, hoy);
     } else if (ahora.hour == 19 && ahora.minute == 30) {
-      await marcarSalidasAutomaticas(empleadoProvider, asistenciaProvider, hoy);
+      await marcarSalidasAutomaticas(
+          empleadoProvider, asistenciaProvider, sedeProvider, hoy);
     }
   }
 
   static Future<void> marcarEntradasAutomaticas(
       EmpleadoProvider empleadoProvider,
       AsistenciaProvider asistenciaProvider,
+      SedeProvider sedeProvider,
       DateTime hoy) async {
     try {
       debugPrint('Iniciando marcación automática de entradas...');
@@ -93,10 +99,13 @@ class MarcacionAutomaticaService {
 
           if (!tieneEntradaHoy) {
             final horaEntrada = DateTime(hoy.year, hoy.month, hoy.day, 8, 30);
+            final sedeId = empleado.sedeId; // Obtenemos la sede del empleado
+
             await asistenciaProvider.registrarEntradaAutomatica(
               empleado.cedula,
               horaEntrada,
               "Entrada automática - ${empleado.enVacaciones ? 'Vacaciones' : 'Permiso médico'}",
+              sedeId, // Pasamos el sedeId
             );
             debugPrint('Entrada automática registrada para ${empleado.nombre}');
           }
@@ -113,6 +122,7 @@ class MarcacionAutomaticaService {
   static Future<void> marcarSalidasAutomaticas(
       EmpleadoProvider empleadoProvider,
       AsistenciaProvider asistenciaProvider,
+      SedeProvider sedeProvider,
       DateTime hoy) async {
     try {
       debugPrint('Iniciando marcación automática de salidas...');

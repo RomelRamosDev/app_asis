@@ -9,6 +9,7 @@ class Asistencia {
   String? observaciones; // Nuevo campo para registrar si lleva tarjetas
   bool entradaAutomatica; // Nuevo campo
   bool salidaAutomatica;
+  String sedeId;
 
   Asistencia({
     this.id,
@@ -21,6 +22,7 @@ class Asistencia {
     this.observaciones,
     this.entradaAutomatica = false, // Valor por defecto
     this.salidaAutomatica = false,
+    required this.sedeId,
   });
 
   // Convertir una Asistencia a un Map
@@ -36,6 +38,7 @@ class Asistencia {
       'observaciones': observaciones,
       'entradaAutomatica': entradaAutomatica,
       'salidaAutomatica': salidaAutomatica,
+      'sede_id': sedeId,
     };
   }
 
@@ -54,6 +57,7 @@ class Asistencia {
       observaciones: map['observaciones'],
       entradaAutomatica: map['entradaAutomatica'] ?? false,
       salidaAutomatica: map['salidaAutomatica'] ?? false,
+      sedeId: map['sede_id'] as String? ?? map['sedeId'] as String? ?? '',
     );
   }
 }
