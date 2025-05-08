@@ -9,6 +9,7 @@ class Empleado {
   DateTime? fechaInicioEstado;
   DateTime? fechaFinEstado;
   final String sedeId;
+  final String areaId;
 
   Empleado({
     this.id,
@@ -21,6 +22,7 @@ class Empleado {
     this.fechaInicioEstado,
     this.fechaFinEstado,
     required this.sedeId,
+    required this.areaId,
   });
 
   // Convertir un Empleado a un Map
@@ -36,6 +38,7 @@ class Empleado {
       'fechaInicioEstado': fechaInicioEstado?.toIso8601String(),
       'fechaFinEstado': fechaFinEstado?.toIso8601String(),
       'sede_id': sedeId,
+      'area_id': areaId,
     };
   }
 
@@ -56,6 +59,7 @@ class Empleado {
           ? DateTime.parse(map['fechaFinEstado'])
           : null,
       sedeId: map['sede_id'] as String,
+      areaId: map['area_id'] as String,
     );
   }
 }

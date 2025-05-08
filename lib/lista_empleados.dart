@@ -2,54 +2,70 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'empleado_model.dart';
 import 'empleado_provider.dart';
-import 'main.dart';
 import 'sede_provider.dart';
+import 'area_provider.dart';
+import 'area_model.dart';
+import 'main.dart';
+import 'themes.dart';
 
 class ListaEmpleados extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final sedeActual = Provider.of<SedeProvider>(context).sedeActual;
+    final sedeProvider = Provider.of<SedeProvider>(context);
+    final areaProvider = Provider.of<AreaProvider>(context);
     final empleadoProvider = Provider.of<EmpleadoProvider>(context);
 
-    // Filtrar empleados por la sede actual
-    final empleados = empleadoProvider.empleados
-        .where((empleado) => empleado.sedeId == sedeActual?.id)
-        .toList();
-
-    print('Empleados filtrados: ${empleados.length}');
+    // Filtrar empleados por sede y área actual
+    final empleados = empleadoProvider.empleados.where((empleado) {
+      final cumpleSede = empleado.sedeId == sedeProvider.sedeActual?.id;
+      final cumpleArea = areaProvider.areaActual == null ||
+          empleado.areaId == areaProvider.areaActual?.id;
+      return cumpleSede && cumpleArea;
+    }).toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Empleados - ${sedeActual?.nombre ?? 'Sin sede'}'),
+        title: Text(
+            'Empleados - ${sedeProvider.sedeActual?.nombre ?? 'Sin sede'}'),
         actions: [
+          // Mostrar área actual
           IconButton(
-            icon: Icon(Icons.business),
-            tooltip: 'Sede actual',
+            icon: Tooltip(
+              child: Icon(Icons.work_outline),
+              message: 'Área: ${areaProvider.areaActual?.nombre ?? 'Todas'}',
+            ),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                      'Sede actual: ${sedeActual?.nombre ?? 'No seleccionada'}'),
+                      'Sede: ${sedeProvider.sedeActual?.nombre ?? 'No seleccionada'}\n'
+                      'Área: ${areaProvider.areaActual?.nombre ?? 'Todas'}'),
                 ),
               );
+            },
+          ),
+          // Botón para cambiar sede
+          IconButton(
+            icon: Icon(Icons.business),
+            tooltip: 'Cambiar sede',
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, '/seleccionar_sede');
             },
           ),
         ],
       ),
       body: Builder(
         builder: (context) {
-          if (sedeActual == null) {
+          if (sedeProvider.sedeActual == null) {
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.business, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No se ha seleccionado sede',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                  SizedBox(height: 8),
+                  SizedBox(height: 20),
+                  Text('No se ha seleccionado sede',
+                      style: TextStyle(fontSize: 18)),
+                  SizedBox(height: 10),
                   ElevatedButton(
                     onPressed: () {
                       Navigator.pushReplacementNamed(
@@ -62,32 +78,39 @@ class ListaEmpleados extends StatelessWidget {
             );
           }
 
-          if (empleados.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.people_outline, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    'No hay empleados en esta sede',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: empleados.length,
-            itemBuilder: (context, index) {
-              final empleado = empleados[index];
-              return _buildEmpleadoItem(context, empleado, empleadoProvider);
+          return RefreshIndicator(
+            onRefresh: () async {
+              await empleadoProvider.cargarEmpleados();
             },
+            child: empleados.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.people_outline,
+                            size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          areaProvider.areaActual == null
+                              ? 'No hay empleados en esta sede'
+                              : 'No hay empleados en esta área',
+                          style: TextStyle(fontSize: 18),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: empleados.length,
+                    itemBuilder: (context, index) {
+                      final empleado = empleados[index];
+                      return _buildEmpleadoItem(
+                          context, empleado, empleadoProvider, areaProvider);
+                    },
+                  ),
           );
         },
       ),
-      floatingActionButton: sedeActual != null
+      floatingActionButton: sedeProvider.sedeActual != null
           ? FloatingActionButton(
               onPressed: () {
                 Navigator.pushNamed(context, '/empleado_form');
@@ -100,7 +123,12 @@ class ListaEmpleados extends StatelessWidget {
   }
 
   Widget _buildEmpleadoItem(BuildContext context, Empleado empleado,
-      EmpleadoProvider empleadoProvider) {
+      EmpleadoProvider empleadoProvider, AreaProvider areaProvider) {
+    final areaEmpleado = areaProvider.areas.firstWhere(
+      (a) => a.id == empleado.areaId,
+      orElse: () => Area(id: '', nombre: 'Sin área', sedeId: ''),
+    );
+
     return Dismissible(
       key: Key(empleado.id!),
       background: Container(
@@ -153,6 +181,7 @@ class ListaEmpleados extends StatelessWidget {
             children: [
               Text('Cédula: ${empleado.cedula}'),
               Text('Cargo: ${empleado.cargo}'),
+              Text('Área: ${areaEmpleado.nombre}'),
               if (empleado.enVacaciones) ...[
                 SizedBox(height: 4),
                 Chip(

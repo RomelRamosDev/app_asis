@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:app_asis/sede_model.dart';
 import 'package:app_asis/sede_provider.dart';
-import 'home_navigation.dart';
+import 'package:app_asis/area_provider.dart';
+import 'package:app_asis/seleccionar_area.dart';
+import 'home_navigation.dart'; // Asegúrate de tener este archivo
 
 class SeleccionarSedeScreen extends StatefulWidget {
   @override
@@ -29,15 +31,49 @@ class _SeleccionarSedeScreenState extends State<SeleccionarSedeScreen>
     super.dispose();
   }
 
-  void _onSedeSelected(int index, Sede sede, BuildContext context) {
+  void _onSedeSelected(int index, Sede sede, BuildContext context) async {
+    final sedeProvider = Provider.of<SedeProvider>(context, listen: false);
+    final areaProvider = Provider.of<AreaProvider>(context, listen: false);
+
     setState(() => _selectedIndex = index);
-    _controller.forward().then((_) {
-      Provider.of<SedeProvider>(context, listen: false).seleccionarSede(sede);
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => HomeNavigation()),
-      );
-    });
+    await _controller.forward();
+
+    try {
+      // Guardar la sede seleccionada
+      sedeProvider.seleccionarSede(sede);
+
+      // Cargar las áreas para esta sede
+      await areaProvider.cargarAreas();
+      final areasDeSede = areaProvider.areasPorSede(sede.id);
+
+      if (context.mounted) {
+        // Verificar si el widget aún está en el árbol
+        if (areasDeSede.isEmpty) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => HomeNavigation()),
+          );
+        } else if (areasDeSede.length == 1) {
+          areaProvider.seleccionarArea(areasDeSede.first);
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => HomeNavigation()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => SeleccionarAreaScreen()),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error en selección de sede: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cargar áreas: $e')),
+        );
+      }
+    }
   }
 
   @override

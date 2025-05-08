@@ -93,6 +93,7 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                       cedula: '',
                       cargo: '',
                       sedeId: '',
+                      areaId: '',
                     ),
                   );
 

@@ -259,6 +259,7 @@ class _GenerarReporteState extends State<GenerarReporte> {
                               cedula: '',
                               cargo: '',
                               sedeId: '',
+                              areaId: '',
                             ),
                           );
 
@@ -352,6 +353,7 @@ class _GenerarReporteState extends State<GenerarReporte> {
           cedula: '',
           cargo: '',
           sedeId: '',
+          areaId: '',
         ),
       );
 
