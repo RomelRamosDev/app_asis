@@ -5,7 +5,7 @@ class Asistencia {
   DateTime? horaSalida;
   bool atrasoEntrada; // Nuevo campo para registrar atrasos en la entrada
   bool atrasoSalida; // Nuevo campo para registrar atrasos en la salida
-  bool llevaTarjetas;
+  bool? llevaTarjetas;
   String? observaciones; // Nuevo campo para registrar si lleva tarjetas
   bool entradaAutomatica; // Nuevo campo
   bool salidaAutomatica;
@@ -22,7 +22,7 @@ class Asistencia {
     this.horaSalida,
     this.atrasoEntrada = false, // Valor por defecto: false
     this.atrasoSalida = false, // Valor por defecto: false
-    this.llevaTarjetas = false, // Valor por defecto: false
+    this.llevaTarjetas, // Valor por defecto: false
     this.observaciones,
     this.entradaAutomatica = false, // Valor por defecto
     this.salidaAutomatica = false,
@@ -54,6 +54,11 @@ class Asistencia {
 
   // Convertir un Map a una Asistencia
   factory Asistencia.fromMap(Map<String, dynamic> map, String id) {
+    const motorizadosAreaIdQuito = '96af2e36-cd65-42c1-b22e-47a5e53a7f9d';
+    const motorizadosAreaIdGYE = 'f08b8d0d-ee48-4c36-91e8-723cb87e8986';
+    final areasMotorizados = {motorizadosAreaIdQuito, motorizadosAreaIdGYE};
+    final areaId = map['area_id'] ?? map['areaId'] ?? '';
+    final esMotorizados = areaId.toLowerCase().contains('Motorizados');
     return Asistencia(
       id: id,
       cedulaEmpleado: map['cedulaEmpleado'],
@@ -63,12 +68,14 @@ class Asistencia {
           : null,
       atrasoEntrada: map['atrasoEntrada'] ?? false,
       atrasoSalida: map['atrasoSalida'] ?? false,
-      llevaTarjetas: map['llevaTarjetas'] ?? false,
+      llevaTarjetas: areasMotorizados.contains(areaId)
+          ? (map['llevaTarjetas'] ?? false)
+          : null,
       observaciones: map['observaciones'],
       entradaAutomatica: map['entradaAutomatica'] ?? false,
       salidaAutomatica: map['salidaAutomatica'] ?? false,
       sedeId: map['sede_id'] as String? ?? map['sedeId'] as String? ?? '',
-      areaId: map['area_id'] ?? map['areaId'] ?? '', // Nuevo campo
+      areaId: areaId,
       horaEntradaArea: map['hora_entrada_area'] != null
           ? DateTime.parse(map['hora_entrada_area'])
           : null, // Nuevo campo

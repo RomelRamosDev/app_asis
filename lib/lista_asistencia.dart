@@ -9,6 +9,12 @@ import 'sede_provider.dart';
 import 'area_provider.dart';
 import 'snackbar_service.dart'; // Asegúrate de crear este archivo
 
+const motorizadosAreaIdQuito = '96af2e36-cd65-42c1-b22e-47a5e53a7f9d';
+
+const motorizadosAreaIdGYE = 'f08b8d0d-ee48-4c36-91e8-723cb87e8986';
+
+final areasMotorizados = {motorizadosAreaIdQuito, motorizadosAreaIdGYE};
+
 class ListaAsistencia extends StatefulWidget {
   @override
   _ListaAsistenciaState createState() => _ListaAsistenciaState();
@@ -174,7 +180,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
           a.areaId == areaId;
     }).toList();
 
-    if (empleado.enVacaciones &&
+    if ((empleado.enVacaciones || empleado.enPermisoMedico) &&
         empleado.fechaInicioEstado != null &&
         empleado.fechaFinEstado != null &&
         DateTime.now().isAfter(empleado.fechaInicioEstado!) &&
@@ -208,12 +214,15 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
 
   Widget _buildVacacionesTile(
       BuildContext context, Empleado empleado, String sedeId, String areaId) {
+    final estado = empleado.enVacaciones ? 'VACACIONES' : 'PERMISO MÉDICO';
+    final fechaFin = DateFormat('dd/MM/yyyy').format(empleado.fechaFinEstado!);
+
     return _buildTileBase(
       context,
       empleado: empleado,
-      backgroundColor: Colors.blue[100],
-      message:
-          'De vacaciones hasta ${DateFormat('dd/MM/yyyy').format(empleado.fechaFinEstado!)}',
+      backgroundColor:
+          empleado.enVacaciones ? Colors.blue[100] : Colors.orange[100],
+      message: '$estado hasta $fechaFin',
       showEntryAction: false,
       showExitAction: false,
       sedeId: sedeId,
@@ -448,8 +457,11 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
           await _mostrarDialogo(context, 'Observaciones (opcional)');
       if (observaciones == null) return;
 
-      final llevaTarjetas = await _mostrarConfirmacion(
-          context, '¿El empleado lleva tarjetas fuera del horario laboral?');
+      bool? llevaTarjetas = false;
+      if (areasMotorizados.contains(areaId)) {
+        llevaTarjetas = await _mostrarConfirmacion(
+            context, '¿El empleado lleva tarjetas fuera del horario laboral?');
+      }
 
       if (atrasoSalida) {
         NotificationService.showWarning('${empleado.nombre} ha salido tarde');
@@ -531,81 +543,140 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     DateTime? fechaInicio = empleado.fechaInicioEstado;
     DateTime? fechaFin = empleado.fechaFinEstado;
 
+    bool esVacaciones = empleado.enVacaciones;
+    bool esPermisoMedico = empleado.enPermisoMedico;
+
     await showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text(empleado.enVacaciones
-                  ? 'Editar vacaciones'
-                  : 'Marcar vacaciones'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    title: Text('Fecha de inicio'),
-                    subtitle: Text(fechaInicio != null
-                        ? DateFormat('dd/MM/yyyy').format(fechaInicio!)
-                        : 'No seleccionada'),
-                    trailing: IconButton(
-                      icon: Icon(Icons.calendar_today),
-                      onPressed: () async {
-                        final selectedDate = await showDatePicker(
-                          context: context,
-                          initialDate: fechaInicio ?? DateTime.now(),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(Duration(days: 365)),
-                        );
-                        if (selectedDate != null) {
-                          setState(() {
-                            fechaInicio = selectedDate;
-                          });
-                        }
-                      },
-                    ),
+              title: Text(empleado.enVacaciones || empleado.enPermisoMedico
+                  ? 'Editar estado'
+                  : 'Marcar estado'),
+              content: SingleChildScrollView(
+                // Añade desplazamiento
+                child: Container(
+                  width: double.maxFinite, // Aprovecha el ancho disponible
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min, // Tamaño mínimo necesario
+                    children: [
+                      // Selector de tipo de estado - versión compacta
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          ChoiceChip(
+                            label: Text('Vacaciones'),
+                            selected: esVacaciones,
+                            onSelected: (selected) {
+                              setState(() {
+                                esVacaciones = selected;
+                                esPermisoMedico = !selected;
+                              });
+                            },
+                          ),
+                          ChoiceChip(
+                            label: Text('Permiso Médico'),
+                            selected: esPermisoMedico,
+                            onSelected: (selected) {
+                              setState(() {
+                                esPermisoMedico = selected;
+                                esVacaciones = !selected;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 16),
+                      // Selector de fechas más compacto
+                      Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text('Fecha inicio:'),
+                              ),
+                              TextButton(
+                                child: Text(
+                                  fechaInicio != null
+                                      ? DateFormat('dd/MM/yyyy')
+                                          .format(fechaInicio!)
+                                      : 'Seleccionar',
+                                  style: TextStyle(color: Colors.blue),
+                                ),
+                                onPressed: () async {
+                                  final selectedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: fechaInicio ?? DateTime.now(),
+                                    firstDate: DateTime.now(),
+                                    lastDate:
+                                        DateTime.now().add(Duration(days: 365)),
+                                  );
+                                  if (selectedDate != null) {
+                                    setState(() => fechaInicio = selectedDate);
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text('Fecha fin:'),
+                              ),
+                              TextButton(
+                                child: Text(
+                                  fechaFin != null
+                                      ? DateFormat('dd/MM/yyyy')
+                                          .format(fechaFin!)
+                                      : 'Seleccionar',
+                                  style: TextStyle(color: Colors.blue),
+                                ),
+                                onPressed: () async {
+                                  final selectedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: fechaFin ??
+                                        (fechaInicio ?? DateTime.now())
+                                            .add(Duration(days: 7)),
+                                    firstDate: fechaInicio ?? DateTime.now(),
+                                    lastDate:
+                                        DateTime.now().add(Duration(days: 365)),
+                                  );
+                                  if (selectedDate != null) {
+                                    setState(() => fechaFin = selectedDate);
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  ListTile(
-                    title: Text('Fecha de fin'),
-                    subtitle: Text(fechaFin != null
-                        ? DateFormat('dd/MM/yyyy').format(fechaFin!)
-                        : 'No seleccionada'),
-                    trailing: IconButton(
-                      icon: Icon(Icons.calendar_today),
-                      onPressed: () async {
-                        final selectedDate = await showDatePicker(
-                          context: context,
-                          initialDate: fechaFin ??
-                              (fechaInicio ?? DateTime.now())
-                                  .add(Duration(days: 7)),
-                          firstDate: fechaInicio ?? DateTime.now(),
-                          lastDate: DateTime.now().add(Duration(days: 365)),
-                        );
-                        if (selectedDate != null) {
-                          setState(() {
-                            fechaFin = selectedDate;
-                          });
-                        }
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
               actions: [
-                if (empleado.enVacaciones)
+                if (empleado.enVacaciones || empleado.enPermisoMedico)
                   TextButton(
                     onPressed: () async {
                       final empleadoProvider =
                           Provider.of<EmpleadoProvider>(context, listen: false);
                       empleado.enVacaciones = false;
+                      empleado.enPermisoMedico = false;
                       empleado.fechaInicioEstado = null;
                       empleado.fechaFinEstado = null;
                       await empleadoProvider.actualizarEmpleado(empleado);
+
+                      if (mounted) {
+                        setState(() {});
+                      }
+
                       Navigator.pop(context);
                       NotificationService.showSuccess(
-                          'Vacaciones canceladas para ${empleado.nombre}');
+                          'Estado cancelado para ${empleado.nombre}');
                     },
-                    child: Text('Cancelar vacaciones',
+                    child: Text('Cancelar estado',
                         style: TextStyle(color: Colors.red)),
                   ),
                 TextButton(
@@ -623,13 +694,22 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
 
                       final empleadoProvider =
                           Provider.of<EmpleadoProvider>(context, listen: false);
-                      empleado.enVacaciones = true;
+                      empleado.enVacaciones = esVacaciones;
+                      empleado.enPermisoMedico = esPermisoMedico;
                       empleado.fechaInicioEstado = fechaInicio;
                       empleado.fechaFinEstado = fechaFin;
+
                       await empleadoProvider.actualizarEmpleado(empleado);
+
+                      // Forzar la actualización del estado
+                      if (mounted) {
+                        setState(
+                            () {}); // Esto hace que el widget se reconstruya
+                      }
+
                       Navigator.pop(context);
                       NotificationService.showSuccess(
-                          'Vacaciones registradas para ${empleado.nombre}');
+                          'Estado registrado para ${empleado.nombre}');
                     } else {
                       NotificationService.showError('Seleccione ambas fechas');
                     }
@@ -646,25 +726,51 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
 
   void _mostrarResumenVacaciones(
       BuildContext context, List<Empleado> empleados) {
-    final empleadosEnVacaciones =
-        empleados.where((e) => e.enVacaciones).toList();
+    final empleadosConEstado = empleados
+        .where((e) =>
+            (e.enVacaciones || e.enPermisoMedico) &&
+            e.fechaInicioEstado != null &&
+            e.fechaFinEstado != null)
+        .toList();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Empleados de vacaciones'),
+        title: Text('Empleados con estado especial'),
         content: Container(
           width: double.maxFinite,
           child: ListView.builder(
             shrinkWrap: true,
-            itemCount: empleadosEnVacaciones.length,
+            itemCount: empleadosConEstado.length,
             itemBuilder: (context, index) {
-              final empleado = empleadosEnVacaciones[index];
+              final empleado = empleadosConEstado[index];
+              final estado =
+                  empleado.enVacaciones ? 'Vacaciones' : 'Permiso Médico';
+              final colorEstado =
+                  empleado.enVacaciones ? Colors.blue : Colors.orange;
+
               return ListTile(
+                leading: Icon(
+                  empleado.enVacaciones
+                      ? Icons.beach_access
+                      : Icons.medical_services,
+                  color: colorEstado,
+                ),
                 title: Text('${empleado.nombre} ${empleado.apellido}'),
-                subtitle: Text(
-                    '${DateFormat('dd/MM/yyyy').format(empleado.fechaInicioEstado!)} '
-                    '- ${DateFormat('dd/MM/yyyy').format(empleado.fechaFinEstado!)}'),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      estado,
+                      style: TextStyle(
+                          color: colorEstado, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      '${DateFormat('dd/MM/yyyy').format(empleado.fechaInicioEstado!)} '
+                      '- ${DateFormat('dd/MM/yyyy').format(empleado.fechaFinEstado!)}',
+                    ),
+                  ],
+                ),
               );
             },
           ),
