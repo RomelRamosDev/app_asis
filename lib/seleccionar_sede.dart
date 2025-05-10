@@ -133,7 +133,7 @@ class _SedeCard extends StatelessWidget {
       child: AnimatedContainer(
         duration: Duration(milliseconds: 200),
         width: 150,
-        height: 150,
+        height: 180,
         decoration: BoxDecoration(
           color: isSelected ? Colors.green[300] : Colors.white,
           borderRadius: BorderRadius.circular(20),

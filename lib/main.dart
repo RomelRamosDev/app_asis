@@ -14,6 +14,7 @@ import 'dart:async';
 import 'area_model.dart';
 import 'area_provider.dart';
 import 'seleccionar_area.dart';
+import 'snackbar_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -67,6 +68,7 @@ class MyApp extends StatelessWidget {
     final areaActual = Provider.of<AreaProvider>(context).areaActual;
 
     return MaterialApp(
+      scaffoldMessengerKey: NotificationService.key,
       title: 'Registro de Empleados',
       theme: ThemeData(
         primarySwatch: greenPalette,

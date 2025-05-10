@@ -5,8 +5,9 @@ import 'empleado_model.dart';
 import 'empleado_provider.dart';
 import 'asistencia_provider.dart';
 import 'aistencia_model.dart';
-import 'marcacion_automatica_service.dart';
 import 'sede_provider.dart';
+import 'area_provider.dart';
+import 'snackbar_service.dart'; // Asegúrate de crear este archivo
 
 class ListaAsistencia extends StatefulWidget {
   @override
@@ -17,6 +18,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
   @override
   Widget build(BuildContext context) {
     final sedeProvider = Provider.of<SedeProvider>(context);
+    final areaProvider = Provider.of<AreaProvider>(context);
     final empleadoProvider = Provider.of<EmpleadoProvider>(context);
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
 
@@ -24,21 +26,24 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
       return _buildNoSedeSelected(context);
     }
 
+    if (areaProvider.areaActual == null) {
+      return _buildNoAreaSelected(context);
+    }
+
     final sedeActualId = sedeProvider.sedeActual!.id;
-    final empleados = empleadoProvider.empleados
-        .where((e) => e.sedeId == sedeActualId)
-        .toList();
+    final areaActualId = areaProvider.areaActual!.id;
+
+    final empleados = empleadoProvider.empleados.where((e) {
+      return e.sedeId == sedeActualId && e.areaId == areaActualId;
+    }).toList();
 
     final fechaActual = DateTime.now();
     final fechaActualFormateada = DateFormat('yyyy-MM-dd').format(fechaActual);
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      MarcacionAutomaticaService.verificarMarcacionesAutomaticas(context);
-    });
-
     return Scaffold(
       appBar: AppBar(
-        title: Text('Asistencia - ${sedeProvider.sedeActual?.nombre ?? ''}'),
+        title: Text(
+            'Asistencia - ${sedeProvider.sedeActual?.nombre ?? ''} - ${areaProvider.areaActual?.nombre ?? ''}'),
         actions: [
           IconButton(
             icon: Icon(Icons.calendar_today),
@@ -48,12 +53,9 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
             icon: Icon(Icons.business),
             tooltip: 'Sede actual',
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                      'Sede: ${sedeProvider.sedeActual?.nombre ?? 'No seleccionada'}'),
-                ),
-              );
+              NotificationService.showInfo(
+                  'Sede: ${sedeProvider.sedeActual?.nombre ?? 'No seleccionada'}\n'
+                  'Área: ${areaProvider.areaActual?.nombre ?? 'No seleccionada'}');
             },
           ),
         ],
@@ -64,9 +66,10 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
           await empleadoProvider.cargarEmpleados();
         },
         child: empleados.isEmpty
-            ? _buildNoEmployeesInSede()
+            ? _buildNoEmployeesInArea()
             : FutureBuilder<List<Asistencia>>(
-                future: asistenciaProvider.getAsistenciasPorSede(sedeActualId),
+                future: asistenciaProvider.getAsistenciasPorSedeYArea(
+                    sedeActualId, areaActualId),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(child: CircularProgressIndicator());
@@ -88,6 +91,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                         asistencias,
                         fechaActualFormateada,
                         sedeActualId,
+                        areaActualId,
                       );
                     },
                   );
@@ -117,14 +121,34 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     );
   }
 
-  Widget _buildNoEmployeesInSede() {
+  Widget _buildNoAreaSelected(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.work_outline, size: 64, color: Colors.grey),
+          SizedBox(height: 20),
+          Text('No se ha seleccionado área', style: TextStyle(fontSize: 18)),
+          SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, '/seleccionar_area');
+            },
+            child: Text('Seleccionar área'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoEmployeesInArea() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.people_outline, size: 64, color: Colors.grey),
           SizedBox(height: 16),
-          Text('No hay empleados en esta sede', style: TextStyle(fontSize: 18)),
+          Text('No hay empleados en esta área', style: TextStyle(fontSize: 18)),
         ],
       ),
     );
@@ -136,15 +160,18 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     List<Asistencia> asistencias,
     String fechaActual,
     String sedeId,
+    String areaId,
   ) {
     final asistenciaProvider =
         Provider.of<AsistenciaProvider>(context, listen: false);
+    final areaProvider = Provider.of<AreaProvider>(context, listen: false);
 
     final asistenciasHoy = asistencias.where((a) {
       final fechaAsistencia = DateFormat('yyyy-MM-dd').format(a.horaEntrada);
       return fechaAsistencia == fechaActual &&
           a.cedulaEmpleado == empleado.cedula &&
-          a.sedeId == sedeId;
+          a.sedeId == sedeId &&
+          a.areaId == areaId;
     }).toList();
 
     if (empleado.enVacaciones &&
@@ -152,11 +179,12 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
         empleado.fechaFinEstado != null &&
         DateTime.now().isAfter(empleado.fechaInicioEstado!) &&
         DateTime.now().isBefore(empleado.fechaFinEstado!)) {
-      return _buildVacacionesTile(context, empleado, sedeId);
+      return _buildVacacionesTile(context, empleado, sedeId, areaId);
     }
 
     if (asistenciasHoy.isEmpty) {
-      return _buildEntradaTile(context, empleado, asistenciaProvider, sedeId);
+      return _buildEntradaTile(
+          context, empleado, asistenciaProvider, sedeId, areaId);
     }
 
     final ultimaAsistencia = asistenciasHoy.last;
@@ -171,6 +199,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
         ultimaAsistencia,
         horaEntrada,
         sedeId,
+        areaId,
       );
     }
 
@@ -178,7 +207,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
   }
 
   Widget _buildVacacionesTile(
-      BuildContext context, Empleado empleado, String sedeId) {
+      BuildContext context, Empleado empleado, String sedeId, String areaId) {
     return _buildTileBase(
       context,
       empleado: empleado,
@@ -188,6 +217,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
       showEntryAction: false,
       showExitAction: false,
       sedeId: sedeId,
+      areaId: areaId,
     );
   }
 
@@ -196,9 +226,10 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     Empleado empleado,
     AsistenciaProvider asistenciaProvider,
     String sedeId,
+    String areaId,
   ) {
     return Dismissible(
-      key: Key('entrada_${empleado.cedula}_$sedeId'),
+      key: Key('entrada_${empleado.cedula}_$sedeId$areaId'),
       direction: DismissDirection.startToEnd,
       background: _buildDismissibleBackground(
         color: Colors.green,
@@ -207,15 +238,14 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
       ),
       confirmDismiss: (direction) async {
         if (empleado.enVacaciones) {
-          if (!mounted) return false;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${empleado.nombre} está de vacaciones')),
-          );
+          NotificationService.showWarning(
+              '${empleado.nombre} está de vacaciones');
           return false;
         }
         return true;
       },
-      onDismissed: (_) => _marcarEntrada(empleado, asistenciaProvider, sedeId),
+      onDismissed: (_) =>
+          _marcarEntrada(empleado, asistenciaProvider, sedeId, areaId),
       child: _buildTileBase(
         context,
         empleado: empleado,
@@ -224,6 +254,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
         showEntryAction: true,
         showExitAction: false,
         sedeId: sedeId,
+        areaId: areaId,
       ),
     );
   }
@@ -235,16 +266,18 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     Asistencia asistencia,
     String horaEntrada,
     String sedeId,
+    String areaId,
   ) {
     return Dismissible(
-      key: Key('salida_${empleado.cedula}_$sedeId'),
+      key: Key('salida_${empleado.cedula}_$sedeId$areaId'),
       direction: DismissDirection.endToStart,
       background: _buildDismissibleBackground(
         color: Colors.red,
         icon: Icons.logout,
         alignment: Alignment.centerRight,
       ),
-      onDismissed: (_) => _marcarSalida(empleado, asistenciaProvider, sedeId),
+      onDismissed: (_) =>
+          _marcarSalida(empleado, asistenciaProvider, sedeId, areaId),
       child: Container(
         color: Colors.green[100],
         child: ListTile(
@@ -253,6 +286,9 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Entrada: $horaEntrada'),
+              if (asistencia.atrasoEntrada)
+                Text('Atraso en entrada',
+                    style: TextStyle(color: Colors.red, fontSize: 12)),
               if (asistencia.entradaAutomatica)
                 Text('Entrada automática',
                     style: TextStyle(color: Colors.orange, fontSize: 12)),
@@ -266,7 +302,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                 onPressed: () => _marcarSalida(
                     empleado,
                     Provider.of<AsistenciaProvider>(context, listen: false),
-                    sedeId),
+                    sedeId,
+                    areaId),
               ),
               IconButton(
                 icon: Icon(Icons.beach_access, color: Colors.blue),
@@ -287,6 +324,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     required bool showEntryAction,
     required bool showExitAction,
     required String sedeId,
+    required String areaId,
   }) {
     return Container(
       color: backgroundColor,
@@ -302,7 +340,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                 onPressed: () => _marcarEntrada(
                     empleado,
                     Provider.of<AsistenciaProvider>(context, listen: false),
-                    sedeId),
+                    sedeId,
+                    areaId),
               ),
             if (showExitAction)
               IconButton(
@@ -310,7 +349,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                 onPressed: () => _marcarSalida(
                     empleado,
                     Provider.of<AsistenciaProvider>(context, listen: false),
-                    sedeId),
+                    sedeId,
+                    areaId),
               ),
             IconButton(
               icon: Icon(Icons.beach_access, color: Colors.blue),
@@ -339,99 +379,51 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     Empleado empleado,
     AsistenciaProvider asistenciaProvider,
     String sedeId,
+    String areaId,
   ) async {
-    if (!mounted) return;
-    final context = this.context;
-
     try {
-      // Verificar si está de vacaciones
       if (empleado.enVacaciones &&
           empleado.fechaInicioEstado != null &&
           empleado.fechaFinEstado != null &&
           DateTime.now().isAfter(empleado.fechaInicioEstado!) &&
           DateTime.now().isBefore(empleado.fechaFinEstado!)) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${empleado.nombre} está de vacaciones')),
-        );
+        NotificationService.showWarning(
+            '${empleado.nombre} está de vacaciones');
         return;
       }
 
+      final areaProvider = Provider.of<AreaProvider>(context, listen: false);
+      final area = areaProvider.areas.firstWhere((a) => a.id == areaId);
       final horaActual = DateTime.now();
-      final horaLimiteEntrada =
-          DateTime(horaActual.year, horaActual.month, horaActual.day, 8, 31);
-      bool atrasoEntrada = horaActual.isAfter(horaLimiteEntrada);
+      bool atrasoEntrada = false;
 
-      final observaciones = await showDialog<String>(
-        context: context,
-        builder: (context) {
-          final controller = TextEditingController();
-          return AlertDialog(
-            title: Text('Observaciones (opcional)'),
-            content: TextFormField(
-              controller: controller,
-              decoration: InputDecoration(
-                hintText: 'Ingrese alguna observación',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancelar'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, controller.text),
-                child: Text('Aceptar'),
-              ),
-            ],
-          );
-        },
-      );
+      if (area.hora_entrada_area != null) {
+        final diferencia = horaActual.difference(area.hora_entrada_area!);
+        atrasoEntrada = diferencia.inMinutes > 15;
+      }
 
+      final observaciones =
+          await _mostrarDialogo(context, 'Observaciones (opcional)');
       if (observaciones == null) return;
 
       if (atrasoEntrada) {
-        if (!mounted) return;
-        await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Entrada tardía'),
-            content:
-                Text('${empleado.nombre} ha llegado después de las 8:31 AM.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Aceptar'),
-              ),
-            ],
-          ),
-        );
+        NotificationService.showWarning('${empleado.nombre} ha llegado tarde');
       }
 
       await asistenciaProvider.registrarEntrada(
+        context,
         empleado.cedula,
-        atrasoEntrada,
         observaciones,
         sedeId,
+        areaId,
       );
 
-      if (!mounted) return;
-      final empleadoProvider =
-          Provider.of<EmpleadoProvider>(context, listen: false);
-      await empleadoProvider.cargarEmpleados();
-      await asistenciaProvider.cargarAsistencias();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Entrada registrada para ${empleado.nombre}')),
-      );
+      await _actualizarDatos();
+      NotificationService.showSuccess(
+          'Entrada registrada para ${empleado.nombre}');
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al registrar entrada: ${e.toString()}')),
-      );
+      NotificationService.showError(
+          'Error al registrar entrada: ${e.toString()}');
     }
   }
 
@@ -439,100 +431,99 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     Empleado empleado,
     AsistenciaProvider asistenciaProvider,
     String sedeId,
+    String areaId,
   ) async {
-    if (!mounted) return;
-    final context = this.context;
-
     try {
+      final areaProvider = Provider.of<AreaProvider>(context, listen: false);
+      final area = areaProvider.areas.firstWhere((a) => a.id == areaId);
       final horaActual = DateTime.now();
-      final horaLimiteSalida =
-          DateTime(horaActual.year, horaActual.month, horaActual.day, 17, 00);
-      bool atrasoSalida = horaActual.isAfter(horaLimiteSalida);
+      bool atrasoSalida = false;
 
-      final observaciones = await showDialog<String>(
-        context: context,
-        builder: (context) {
-          final controller = TextEditingController();
-          return AlertDialog(
-            title: Text('Observaciones (opcional)'),
-            content: TextFormField(
-              controller: controller,
-              decoration: InputDecoration(
-                hintText: 'Ingrese alguna observación',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancelar'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, controller.text),
-                child: Text('Aceptar'),
-              ),
-            ],
-          );
-        },
-      );
+      if (area.hora_salida_area != null) {
+        final diferencia = horaActual.difference(area.hora_salida_area!);
+        atrasoSalida = diferencia.inMinutes > 15;
+      }
 
+      final observaciones =
+          await _mostrarDialogo(context, 'Observaciones (opcional)');
       if (observaciones == null) return;
 
-      final llevaTarjetas = await showDialog<bool>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text('¿Lleva tarjetas?'),
-              content: Text(
-                  '¿El empleado lleva tarjetas para entregar fuera del horario laboral?'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: Text('No'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: Text('Sí'),
-                ),
-              ],
-            ),
-          ) ??
-          false;
+      final llevaTarjetas = await _mostrarConfirmacion(
+          context, '¿El empleado lleva tarjetas fuera del horario laboral?');
 
-      if (atrasoSalida && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text('${empleado.nombre} ha salido después de las 17:00 PM.'),
-            backgroundColor: Colors.green,
-          ),
-        );
+      if (atrasoSalida) {
+        NotificationService.showWarning('${empleado.nombre} ha salido tarde');
       }
 
       await asistenciaProvider.registrarSalida(
+        context,
         empleado.cedula,
-        atrasoSalida,
         llevaTarjetas,
         observaciones,
         sedeId,
+        areaId,
       );
 
-      if (!mounted) return;
-      final empleadoProvider =
-          Provider.of<EmpleadoProvider>(context, listen: false);
-      await empleadoProvider.cargarEmpleados();
-      await asistenciaProvider.cargarAsistencias();
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Salida registrada para ${empleado.nombre}')),
-      );
+      await _actualizarDatos();
+      NotificationService.showSuccess(
+          'Salida registrada para ${empleado.nombre}');
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al registrar salida: ${e.toString()}')),
-      );
+      NotificationService.showError(
+          'Error al registrar salida: ${e.toString()}');
     }
+  }
+
+  Future<String?> _mostrarDialogo(BuildContext context, String titulo) async {
+    final controller = TextEditingController();
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(titulo),
+        content: TextField(controller: controller),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool> _mostrarConfirmacion(
+      BuildContext context, String mensaje) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            content: Text(mensaje),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Sí'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _actualizarDatos() async {
+    final empleadoProvider =
+        Provider.of<EmpleadoProvider>(context, listen: false);
+    final asistenciaProvider =
+        Provider.of<AsistenciaProvider>(context, listen: false);
+    await Future.wait([
+      empleadoProvider.cargarEmpleados(),
+      asistenciaProvider.cargarAsistencias(),
+    ]);
   }
 
   Future<void> _mostrarDialogoVacaciones(
@@ -547,8 +538,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
           builder: (context, setState) {
             return AlertDialog(
               title: Text(empleado.enVacaciones
-                  ? 'Editar vacaciones o Permiso Medico'
-                  : 'Marcar vacaciones o Permiso Medico'),
+                  ? 'Editar vacaciones'
+                  : 'Marcar vacaciones'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -611,11 +602,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                       empleado.fechaFinEstado = null;
                       await empleadoProvider.actualizarEmpleado(empleado);
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text(
-                                'Vacaciones canceladas para ${empleado.nombre}')),
-                      );
+                      NotificationService.showSuccess(
+                          'Vacaciones canceladas para ${empleado.nombre}');
                     },
                     child: Text('Cancelar vacaciones',
                         style: TextStyle(color: Colors.red)),
@@ -628,11 +616,8 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                   onPressed: () async {
                     if (fechaInicio != null && fechaFin != null) {
                       if (fechaFin!.isBefore(fechaInicio!)) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text(
-                                  'La fecha fin debe ser posterior a la fecha inicio')),
-                        );
+                        NotificationService.showError(
+                            'La fecha fin debe ser posterior a la fecha inicio');
                         return;
                       }
 
@@ -643,15 +628,10 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                       empleado.fechaFinEstado = fechaFin;
                       await empleadoProvider.actualizarEmpleado(empleado);
                       Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                            content: Text(
-                                'Vacaciones registradas para ${empleado.nombre}')),
-                      );
+                      NotificationService.showSuccess(
+                          'Vacaciones registradas para ${empleado.nombre}');
                     } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Seleccione ambas fechas')),
-                      );
+                      NotificationService.showError('Seleccione ambas fechas');
                     }
                   },
                   child: Text('Guardar'),
@@ -672,7 +652,7 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Empleados de vacaciones o con Permiso Medico'),
+        title: Text('Empleados de vacaciones'),
         content: Container(
           width: double.maxFinite,
           child: ListView.builder(

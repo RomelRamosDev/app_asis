@@ -6,6 +6,7 @@ import 'asistencia_provider.dart';
 import 'aistencia_model.dart';
 import 'themes.dart';
 import 'sede_provider.dart';
+import 'area_provider.dart';
 import 'package:intl/intl.dart';
 
 class BuscarEmpleado extends StatefulWidget {
@@ -21,13 +22,20 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
     final empleadoProvider = Provider.of<EmpleadoProvider>(context);
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
     final sedeProvider = Provider.of<SedeProvider>(context);
+    final areaProvider = Provider.of<AreaProvider>(context);
 
     // Verificar primero si hay sede seleccionada
     if (sedeProvider.sedeActual == null) {
       return _buildNoSedeSelected(context);
     }
 
+    // Verificar si hay área seleccionada
+    if (areaProvider.areaActual == null) {
+      return _buildNoAreaSelected(context);
+    }
+
     final sedeActualId = sedeProvider.sedeActual!.id;
+    final areaActualId = areaProvider.areaActual!.id;
 
     return Scaffold(
       appBar: AppBar(
@@ -53,6 +61,11 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                 width: 225,
                 height: 225,
                 fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 5),
+              Text(
+                'Área actual: ${areaProvider.areaActual?.nombre ?? 'No seleccionada'}',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
               const SizedBox(height: 5),
               const Text(
@@ -86,7 +99,10 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                   }
 
                   final empleado = empleadoProvider.empleados.firstWhere(
-                    (emp) => emp.cedula == cedula && emp.sedeId == sedeActualId,
+                    (emp) =>
+                        emp.cedula == cedula &&
+                        emp.sedeId == sedeActualId &&
+                        emp.areaId == areaActualId,
                     orElse: () => Empleado(
                       nombre: '',
                       apellido: '',
@@ -98,10 +114,12 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                   );
 
                   if (empleado.cedula.isNotEmpty) {
-                    final haRegistradoEntrada = await asistenciaProvider
-                        .haRegistradoEntradaHoy(empleado.cedula, sedeActualId);
-                    final haRegistradoSalida = await asistenciaProvider
-                        .haRegistradoSalidaHoy(empleado.cedula, sedeActualId);
+                    final haRegistradoEntrada =
+                        await asistenciaProvider.haRegistradoEntradaHoy(
+                            empleado.cedula, sedeActualId, areaActualId);
+                    final haRegistradoSalida =
+                        await asistenciaProvider.haRegistradoSalidaHoy(
+                            empleado.cedula, sedeActualId, areaActualId);
 
                     Navigator.push(
                       context,
@@ -111,13 +129,14 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
                           haRegistradoEntrada: haRegistradoEntrada,
                           haRegistradoSalida: haRegistradoSalida,
                           sedeId: sedeActualId,
+                          areaId: areaActualId,
                         ),
                       ),
                     );
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                          content: Text('Empleado no encontrado en esta sede')),
+                          content: Text('Empleado no encontrado en esta área')),
                     );
                   }
                 },
@@ -158,6 +177,26 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
       ),
     );
   }
+
+  Widget _buildNoAreaSelected(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.work_outline, size: 64, color: Colors.grey),
+          SizedBox(height: 20),
+          Text('No se ha seleccionado área', style: TextStyle(fontSize: 18)),
+          SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, '/seleccionar_area');
+            },
+            child: Text('Seleccionar área'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class DetalleAsistencia extends StatelessWidget {
@@ -165,25 +204,28 @@ class DetalleAsistencia extends StatelessWidget {
   final bool haRegistradoEntrada;
   final bool haRegistradoSalida;
   final String sedeId;
+  final String areaId;
 
   const DetalleAsistencia({
     required this.empleado,
     required this.haRegistradoEntrada,
     required this.haRegistradoSalida,
     required this.sedeId,
+    required this.areaId,
   });
 
   @override
   Widget build(BuildContext context) {
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
+    final areaProvider = Provider.of<AreaProvider>(context);
 
     return Scaffold(
       appBar: AppBar(
         title: Text('Asistencia de ${empleado.nombre}'),
       ),
       body: FutureBuilder<List<Asistencia>>(
-        future: asistenciaProvider.getAsistenciasPorEmpleadoYSede(
-            empleado.cedula, sedeId),
+        future: asistenciaProvider.getAsistenciasPorEmpleadoYSedeYArea(
+            empleado.cedula, sedeId, areaId),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
@@ -264,6 +306,7 @@ class DetalleAsistencia extends StatelessWidget {
   void _marcarEntrada(BuildContext context) async {
     final asistenciaProvider =
         Provider.of<AsistenciaProvider>(context, listen: false);
+    final areaProvider = Provider.of<AreaProvider>(context, listen: false);
 
     // Verificar si está de vacaciones
     if (empleado.enVacaciones &&
@@ -277,10 +320,15 @@ class DetalleAsistencia extends StatelessWidget {
       return;
     }
 
+    final area = areaProvider.areas.firstWhere((a) => a.id == areaId);
     final horaActual = DateTime.now();
-    final horaLimiteEntrada =
-        DateTime(horaActual.year, horaActual.month, horaActual.day, 8, 31);
-    bool atrasoEntrada = horaActual.isAfter(horaLimiteEntrada);
+    bool atrasoEntrada = false;
+
+    // Calcular atraso según horario del área
+    if (area.hora_entrada_area != null) {
+      final diferencia = horaActual.difference(area.hora_entrada_area!);
+      atrasoEntrada = diferencia.inMinutes > 15;
+    }
 
     final observaciones = await _mostrarDialogoObservaciones(context);
     if (observaciones == null) return;
@@ -290,8 +338,8 @@ class DetalleAsistencia extends StatelessWidget {
         context: context,
         builder: (context) => AlertDialog(
           title: Text('Entrada tardía'),
-          content:
-              Text('${empleado.nombre} ha llegado después de las 8:31 AM.'),
+          content: Text(
+              '${empleado.nombre} ha llegado después del horario establecido.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -303,10 +351,11 @@ class DetalleAsistencia extends StatelessWidget {
     }
 
     await asistenciaProvider.registrarEntrada(
+      context, // Necesario para acceder al AreaProvider
       empleado.cedula,
-      atrasoEntrada,
       observaciones,
       sedeId,
+      areaId,
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -318,11 +367,17 @@ class DetalleAsistencia extends StatelessWidget {
   void _marcarSalida(BuildContext context) async {
     final asistenciaProvider =
         Provider.of<AsistenciaProvider>(context, listen: false);
+    final areaProvider = Provider.of<AreaProvider>(context, listen: false);
 
+    final area = areaProvider.areas.firstWhere((a) => a.id == areaId);
     final horaActual = DateTime.now();
-    final horaLimiteSalida =
-        DateTime(horaActual.year, horaActual.month, horaActual.day, 17, 00);
-    bool atrasoSalida = horaActual.isAfter(horaLimiteSalida);
+    bool atrasoSalida = false;
+
+    // Calcular atraso según horario del área
+    if (area.hora_salida_area != null) {
+      final diferencia = horaActual.difference(area.hora_salida_area!);
+      atrasoSalida = diferencia.inMinutes > 15;
+    }
 
     final observaciones = await _mostrarDialogoObservaciones(context);
     if (observaciones == null) return;
@@ -350,19 +405,20 @@ class DetalleAsistencia extends StatelessWidget {
     if (atrasoSalida) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-              Text('${empleado.nombre} ha salido después de las 17:00 PM.'),
+          content: Text(
+              '${empleado.nombre} ha salido después del horario establecido.'),
           backgroundColor: Colors.green,
         ),
       );
     }
 
     await asistenciaProvider.registrarSalida(
+      context, // Necesario para acceder al AreaProvider
       empleado.cedula,
-      atrasoSalida,
       llevaTarjetas,
       observaciones,
       sedeId,
+      areaId,
     );
 
     ScaffoldMessenger.of(context).showSnackBar(

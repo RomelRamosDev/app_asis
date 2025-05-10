@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import 'empleado_provider.dart';
 import 'asistencia_provider.dart';
 import 'sede_provider.dart';
+import 'area_provider.dart';
+import 'area_model.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -17,18 +19,28 @@ void callbackDispatcher() {
       final empleadoProvider = EmpleadoProvider();
       final asistenciaProvider = AsistenciaProvider();
       final sedeProvider = SedeProvider();
+      final areaProvider = AreaProvider();
 
       // Cargar datos necesarios
       await empleadoProvider.cargarEmpleados();
       await asistenciaProvider.cargarAsistencias();
       await sedeProvider.cargarSedes();
+      await areaProvider.cargarAreas();
 
       if (ahora.hour == 10 && ahora.minute == 0) {
         await MarcacionAutomaticaService.marcarEntradasAutomaticas(
-            empleadoProvider, asistenciaProvider, sedeProvider, hoy);
+            empleadoProvider,
+            asistenciaProvider,
+            sedeProvider,
+            areaProvider,
+            hoy);
       } else if (ahora.hour == 19 && ahora.minute == 30) {
         await MarcacionAutomaticaService.marcarSalidasAutomaticas(
-            empleadoProvider, asistenciaProvider, sedeProvider, hoy);
+            empleadoProvider,
+            asistenciaProvider,
+            sedeProvider,
+            areaProvider,
+            hoy);
       }
     } catch (e) {
       debugPrint('Error en ejecución background: $e');
@@ -64,13 +76,14 @@ class MarcacionAutomaticaService {
     final asistenciaProvider =
         Provider.of<AsistenciaProvider>(context, listen: false);
     final sedeProvider = Provider.of<SedeProvider>(context, listen: false);
+    final areaProvider = Provider.of<AreaProvider>(context, listen: false);
 
     if (ahora.hour == 10 && ahora.minute == 0) {
-      await marcarEntradasAutomaticas(
-          empleadoProvider, asistenciaProvider, sedeProvider, hoy);
+      await marcarEntradasAutomaticas(empleadoProvider, asistenciaProvider,
+          sedeProvider, areaProvider, hoy);
     } else if (ahora.hour == 19 && ahora.minute == 30) {
-      await marcarSalidasAutomaticas(
-          empleadoProvider, asistenciaProvider, sedeProvider, hoy);
+      await marcarSalidasAutomaticas(empleadoProvider, asistenciaProvider,
+          sedeProvider, areaProvider, hoy);
     }
   }
 
@@ -78,6 +91,7 @@ class MarcacionAutomaticaService {
       EmpleadoProvider empleadoProvider,
       AsistenciaProvider asistenciaProvider,
       SedeProvider sedeProvider,
+      AreaProvider areaProvider,
       DateTime hoy) async {
     try {
       debugPrint('Iniciando marcación automática de entradas...');
@@ -88,9 +102,10 @@ class MarcacionAutomaticaService {
 
       for (final empleado in empleados) {
         try {
-          // Verificar si ya tiene entrada hoy
+          // Verificar si ya tiene entrada hoy en esta área
           final asistencias = await asistenciaProvider
-              .getAsistenciasPorEmpleado(empleado.cedula);
+              .getAsistenciasPorEmpleado(empleado.cedula,
+                  areaId: empleado.areaId);
 
           final tieneEntradaHoy = asistencias.any((a) =>
               a.horaEntrada.year == hoy.year &&
@@ -98,14 +113,27 @@ class MarcacionAutomaticaService {
               a.horaEntrada.day == hoy.day);
 
           if (!tieneEntradaHoy) {
-            final horaEntrada = DateTime(hoy.year, hoy.month, hoy.day, 8, 30);
-            final sedeId = empleado.sedeId; // Obtenemos la sede del empleado
+            final area = areaProvider.areas.firstWhere(
+              (a) => a.id == empleado.areaId,
+              orElse: () => Area(
+                id: '',
+                nombre: '',
+                sedeId: '',
+                hora_entrada_area:
+                    DateTime(hoy.year, hoy.month, hoy.day, 8, 30),
+              ),
+            );
+
+            final horaEntrada = area.hora_entrada_area ??
+                DateTime(hoy.year, hoy.month, hoy.day, 8, 30);
 
             await asistenciaProvider.registrarEntradaAutomatica(
               empleado.cedula,
               horaEntrada,
               "Entrada automática - ${empleado.enVacaciones ? 'Vacaciones' : 'Permiso médico'}",
-              sedeId, // Pasamos el sedeId
+              empleado.sedeId,
+              empleado.areaId,
+              area.hora_entrada_area,
             );
             debugPrint('Entrada automática registrada para ${empleado.nombre}');
           }
@@ -123,6 +151,7 @@ class MarcacionAutomaticaService {
       EmpleadoProvider empleadoProvider,
       AsistenciaProvider asistenciaProvider,
       SedeProvider sedeProvider,
+      AreaProvider areaProvider,
       DateTime hoy) async {
     try {
       debugPrint('Iniciando marcación automática de salidas...');
@@ -131,8 +160,10 @@ class MarcacionAutomaticaService {
 
       for (final empleado in empleados) {
         try {
+          // Obtener asistencias solo del área del empleado
           final asistencias = await asistenciaProvider
-              .getAsistenciasPorEmpleado(empleado.cedula);
+              .getAsistenciasPorEmpleado(empleado.cedula,
+                  areaId: empleado.areaId);
 
           final asistenciasHoy = asistencias
               .where((a) =>
@@ -144,11 +175,26 @@ class MarcacionAutomaticaService {
           if (asistenciasHoy.isNotEmpty) {
             final asistencia = asistenciasHoy.first;
             if (asistencia.horaSalida == null) {
-              final horaSalida = DateTime(hoy.year, hoy.month, hoy.day, 17, 0);
+              final area = areaProvider.areas.firstWhere(
+                (a) => a.id == empleado.areaId,
+                orElse: () => Area(
+                  id: '',
+                  nombre: '',
+                  sedeId: '',
+                  hora_salida_area:
+                      DateTime(hoy.year, hoy.month, hoy.day, 17, 0),
+                ),
+              );
+
+              final horaSalida = area.hora_salida_area ??
+                  DateTime(hoy.year, hoy.month, hoy.day, 17, 0);
+
               await asistenciaProvider.registrarSalidaAutomatica(
                 asistencia.id!,
                 horaSalida,
                 "Salida automática",
+                empleado.areaId,
+                area.hora_salida_area,
               );
               debugPrint(
                   'Salida automática registrada para ${empleado.nombre}');

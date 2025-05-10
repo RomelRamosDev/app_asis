@@ -10,6 +10,10 @@ class Asistencia {
   bool entradaAutomatica; // Nuevo campo
   bool salidaAutomatica;
   String sedeId;
+  String areaId; // Nuevo campo: ID del área
+  DateTime?
+      horaEntradaArea; // Nuevo campo: Hora de entrada definida por el área
+  DateTime? horaSalidaArea; // Nuevo campo: Hora de salida definida por el área
 
   Asistencia({
     this.id,
@@ -23,6 +27,9 @@ class Asistencia {
     this.entradaAutomatica = false, // Valor por defecto
     this.salidaAutomatica = false,
     required this.sedeId,
+    required this.areaId, // Nuevo parámetro requerido
+    this.horaEntradaArea, // Opcional (se calculará si es null)
+    this.horaSalidaArea, // Opcional (se calculará si es null)
   });
 
   // Convertir una Asistencia a un Map
@@ -39,6 +46,9 @@ class Asistencia {
       'entradaAutomatica': entradaAutomatica,
       'salidaAutomatica': salidaAutomatica,
       'sede_id': sedeId,
+      'area_id': areaId, // Nuevo campo en el Map
+      'hora_entrada_area': horaEntradaArea?.toIso8601String(), // Nuevo campo
+      'hora_salida_area': horaSalidaArea?.toIso8601String(), // Nuevo campo
     };
   }
 
@@ -58,6 +68,13 @@ class Asistencia {
       entradaAutomatica: map['entradaAutomatica'] ?? false,
       salidaAutomatica: map['salidaAutomatica'] ?? false,
       sedeId: map['sede_id'] as String? ?? map['sedeId'] as String? ?? '',
+      areaId: map['area_id'] ?? map['areaId'] ?? '', // Nuevo campo
+      horaEntradaArea: map['hora_entrada_area'] != null
+          ? DateTime.parse(map['hora_entrada_area'])
+          : null, // Nuevo campo
+      horaSalidaArea: map['hora_salida_area'] != null
+          ? DateTime.parse(map['hora_salida_area'])
+          : null, // Nuevo campo
     );
   }
 }
