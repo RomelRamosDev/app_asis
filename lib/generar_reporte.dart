@@ -12,6 +12,9 @@ import 'package:intl/intl.dart';
 import 'themes.dart';
 import 'sede_provider.dart';
 import 'area_provider.dart';
+import 'snackbar_service.dart';
+import 'auth_provider.dart';
+import 'pin_auth_screen.dart';
 
 class GenerarReporte extends StatefulWidget {
   @override
@@ -27,9 +30,10 @@ class _GenerarReporteState extends State<GenerarReporte> {
   final fechaFinalReporteController = TextEditingController();
   final fechaInicialEliminarController = TextEditingController();
   final fechaFinalEliminarController = TextEditingController();
+
   bool _filtrarPorAtrasos = false;
   bool _filtrarPorTarjetas = false;
-
+  bool _modoEliminacionCombinada = true;
   // Nuevas variables para el proceso de eliminación
   String? _cedulaParaEliminar;
   List<Asistencia> _asistenciasFiltradasParaEliminar = [];
@@ -45,16 +49,190 @@ class _GenerarReporteState extends State<GenerarReporte> {
     _areaId = areaProvider.areaActual?.id;
   }
 
+  Future<void> _eliminarAsistenciasCombinado() async {
+    final asistenciaProvider =
+        Provider.of<AsistenciaProvider>(context, listen: false);
+    final empleadoProvider =
+        Provider.of<EmpleadoProvider>(context, listen: false);
+
+    // Validaciones
+    if (_cedulaParaEliminar == null || _cedulaParaEliminar!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingrese una cédula válida')),
+      );
+      return;
+    }
+
+    if (fechaInicialEliminarController.text.isEmpty ||
+        fechaFinalEliminarController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Seleccione un rango de fechas')),
+      );
+      return;
+    }
+
+    try {
+      final formatoEntrada = DateFormat('dd-MM-yyyy');
+      final fechaInicial =
+          formatoEntrada.parse(fechaInicialEliminarController.text);
+      final fechaFinal =
+          formatoEntrada.parse(fechaFinalEliminarController.text);
+
+      if (fechaFinal.isBefore(fechaInicial)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('La fecha final debe ser posterior a la inicial')),
+        );
+        return;
+      }
+
+      // Obtener empleado
+      final empleado = empleadoProvider.empleados.firstWhere(
+        (e) => e.cedula == _cedulaParaEliminar,
+        orElse: () => Empleado(
+          nombre: 'Desconocido',
+          apellido: '',
+          cedula: '',
+          cargo: '',
+          sedeId: '',
+          areaId: '',
+        ),
+      );
+
+      // Obtener asistencias filtradas
+      final asistenciasFiltradas = await asistenciaProvider
+          .getAsistenciasPorEmpleado(
+        _cedulaParaEliminar!,
+        areaId: _areaId,
+      )
+          .then((asistencias) {
+        return asistencias.where((a) {
+          final fechaAsistencia = DateTime(
+              a.horaEntrada.year, a.horaEntrada.month, a.horaEntrada.day);
+          return (fechaAsistencia.isAfter(fechaInicial) ||
+                  fechaAsistencia.isAtSameMomentAs(fechaInicial)) &&
+              (fechaAsistencia.isBefore(fechaFinal) ||
+                  fechaAsistencia.isAtSameMomentAs(fechaFinal));
+        }).toList();
+      });
+
+      if (asistenciasFiltradas.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'No se encontraron asistencias con los filtros aplicados')),
+        );
+        return;
+      }
+
+      // Mostrar diálogo de confirmación
+      final confirmado = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Confirmar eliminación'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Empleado: ${empleado.nombre} ${empleado.apellido}'),
+                  Text('Cédula: ${empleado.cedula}'),
+                  const SizedBox(height: 10),
+                  Text(
+                      'Período: ${fechaInicialEliminarController.text} - ${fechaFinalEliminarController.text}'),
+                  Text(
+                      'Asistencias a eliminar: ${asistenciasFiltradas.length}'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Eliminar',
+                      style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+
+      if (confirmado) {
+        for (final asistencia in asistenciasFiltradas) {
+          await asistenciaProvider.eliminarAsistencia(asistencia.id!);
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  '${asistenciasFiltradas.length} asistencias eliminadas')),
+        );
+
+        setState(() {
+          _cedulaParaEliminar = null;
+          _filtroEliminarController.clear();
+          fechaInicialEliminarController.clear();
+          fechaFinalEliminarController.clear();
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final empleadoProvider = Provider.of<EmpleadoProvider>(context);
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
     final sedeProvider = Provider.of<SedeProvider>(context);
     final areaProvider = Provider.of<AreaProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    if (!authProvider.isAuthenticated) {
+      return PinAuthScreen(
+        moduleName: 'Reportes',
+        destination: GenerarReporte(),
+        areaId: areaProvider.areaActual?.id,
+      );
+    }
+
+    if (sedeProvider.sedeActual == null) {
+      return _buildNoSedeSelected(context);
+    }
+
+    if (areaProvider.areaActual == null) {
+      return _buildNoAreaSelected(context);
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Generar Reporte de Asistencias'),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Reportes - ${sedeProvider.sedeActual?.nombre ?? ''} - ${areaProvider.areaActual?.nombre ?? ''}',
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.business),
+            tooltip: 'Sede actual',
+            onPressed: () {
+              NotificationService.showInfo(
+                  'Sede: ${sedeProvider.sedeActual?.nombre ?? 'No seleccionada'}\n'
+                  'Área: ${areaProvider.areaActual?.nombre ?? 'No seleccionada'}');
+            },
+          ),
+          if (authProvider.currentRole == 'admin')
+            IconButton(
+              icon: Icon(Icons.settings),
+              onPressed: () {
+                // Configuración avanzada de reportes para admins
+              },
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -196,241 +374,327 @@ class _GenerarReporteState extends State<GenerarReporte> {
               ),
             ),
             SizedBox(height: 20),
-            // Segundo bloque: Eliminar asistencias
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green),
-              ),
-              padding: EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Text(
-                    'Eliminar Asistencias',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 10),
-                  DropdownButton<String>(
-                    value: _filtroSeleccionadoEliminar,
-                    onChanged: (String? nuevoValor) {
-                      setState(() {
-                        _filtroSeleccionadoEliminar = nuevoValor!;
-                        _filtroEliminarController.clear();
-                        _cedulaParaEliminar = null;
-                        _asistenciasFiltradasParaEliminar = [];
-                      });
-                    },
-                    items: <String>['Cédula', 'Nombre', 'Cargo', 'Fecha']
-                        .map<DropdownMenuItem<String>>((String valor) {
-                      return DropdownMenuItem<String>(
-                        value: valor,
-                        child: Text(valor),
-                      );
-                    }).toList(),
-                  ),
-                  SizedBox(height: 10),
-                  if (_filtroSeleccionadoEliminar != 'Fecha')
-                    TextFormField(
-                      controller: _filtroEliminarController,
-                      decoration: InputDecoration(
-                        labelText: 'Ingrese el valor para filtrar',
-                        hintText: _filtroSeleccionadoEliminar == 'Cédula'
-                            ? 'Ej: 123456789'
-                            : _filtroSeleccionadoEliminar == 'Nombre'
-                                ? 'Ej: Juan Pérez'
-                                : 'Ej: Gerente',
-                      ),
-                      onChanged: (value) {
-                        if (_filtroSeleccionadoEliminar == 'Cédula') {
-                          setState(() {
-                            _cedulaParaEliminar = value;
-                          });
-                        }
-                      },
+            if (authProvider.currentRole == 'admin')
+              // Segundo bloque: Eliminar asistencias
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.green),
+                ),
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      'Eliminar Asistencias',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                  if (_cedulaParaEliminar != null &&
-                      _cedulaParaEliminar!.isNotEmpty)
-                    Column(
+                    SizedBox(height: 10),
+
+                    // Selector de modo
+                    Row(
                       children: [
-                        SizedBox(height: 10),
-                        Text('Filtrando por cédula: $_cedulaParaEliminar'),
+                        const Text('Modo:'),
+                        SizedBox(width: 4), // Reducir espacio
+                        ChoiceChip(
+                          label: const Text('Combinado'), // Texto más corto
+                          selected: _modoEliminacionCombinada,
+                          onSelected: (selected) {
+                            setState(() {
+                              _modoEliminacionCombinada = true;
+                              _cedulaParaEliminar = null;
+                              _filtroEliminarController.clear();
+                            });
+                          },
+                        ),
+                        SizedBox(width: 4), // Reducir espacio
+                        ChoiceChip(
+                          label: const Text('Individual'),
+                          selected: !_modoEliminacionCombinada,
+                          onSelected: (selected) {
+                            setState(() {
+                              _modoEliminacionCombinada = false;
+                            });
+                          },
+                        ),
                       ],
                     ),
-                  if (_filtroSeleccionadoEliminar == 'Fecha')
-                    _buildRangoFechas(
-                      fechaInicialEliminarController,
-                      fechaFinalEliminarController,
-                    ),
-                  SizedBox(height: 10),
-                  if (_asistenciasFiltradasParaEliminar.isNotEmpty)
-                    Text(
-                      '${_asistenciasFiltradasParaEliminar.length} asistencias encontradas',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  SizedBox(height: 10),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: greenPalette[500],
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+
+                    SizedBox(height: 10),
+
+                    // Contenido condicional según el modo
+                    if (_modoEliminacionCombinada) ...[
+                      // Modo combinado (cedula + fechas)
+                      TextFormField(
+                        controller: _filtroEliminarController,
+                        decoration: const InputDecoration(
+                          labelText: 'Cédula del empleado',
+                          hintText: 'Ej: 1234567890',
+                        ),
+                        onChanged: (value) =>
+                            setState(() => _cedulaParaEliminar = value),
                       ),
-                    ),
-                    onPressed: () async {
-                      if (_filtroSeleccionadoEliminar == 'Fecha') {
-                        final fechaInicial =
-                            fechaInicialEliminarController.text;
-                        final fechaFinal = fechaFinalEliminarController.text;
-
-                        if (fechaInicial.isEmpty || fechaFinal.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content:
-                                    Text('Por favor, ingresa ambas fechas')),
+                      SizedBox(height: 10),
+                      _buildRangoFechas(
+                        fechaInicialEliminarController,
+                        fechaFinalEliminarController,
+                      ),
+                      SizedBox(height: 10),
+                      if (_cedulaParaEliminar != null &&
+                          _cedulaParaEliminar!.isNotEmpty)
+                        Text(
+                          'Filtrando por cédula: $_cedulaParaEliminar',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                    ] else ...[
+                      // Modo individual (mantener lógica original)
+                      DropdownButton<String>(
+                        value: _filtroSeleccionadoEliminar,
+                        onChanged: (String? nuevoValor) {
+                          setState(() {
+                            _filtroSeleccionadoEliminar = nuevoValor!;
+                            _filtroEliminarController.clear();
+                          });
+                        },
+                        items: <String>['Cédula', 'Nombre', 'Cargo', 'Fecha']
+                            .map<DropdownMenuItem<String>>((String valor) {
+                          return DropdownMenuItem<String>(
+                            value: valor,
+                            child: Text(valor),
                           );
-                          return;
-                        }
+                        }).toList(),
+                      ),
+                      SizedBox(height: 10),
+                      if (_filtroSeleccionadoEliminar != 'Fecha')
+                        TextFormField(
+                          controller: _filtroEliminarController,
+                          decoration: InputDecoration(
+                            labelText: 'Ingrese el valor para filtrar',
+                            hintText: _filtroSeleccionadoEliminar == 'Cédula'
+                                ? 'Ej: 123456789'
+                                : _filtroSeleccionadoEliminar == 'Nombre'
+                                    ? 'Ej: Juan Pérez'
+                                    : 'Ej: Gerente',
+                          ),
+                        ),
+                      if (_filtroSeleccionadoEliminar == 'Fecha')
+                        _buildRangoFechas(
+                          fechaInicialEliminarController,
+                          fechaFinalEliminarController,
+                        ),
+                    ],
 
-                        final formatoEntrada = DateFormat('dd-MM-yyyy');
-                        final fechaInicialDate =
-                            formatoEntrada.parse(fechaInicial);
-                        final fechaFinalDate = formatoEntrada.parse(fechaFinal);
+                    SizedBox(height: 20),
 
-                        if (_cedulaParaEliminar == null &&
-                            _filtroSeleccionadoEliminar != 'Cédula') {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text(
-                                    'Primero filtra por cédula/nombre/cargo')),
-                          );
-                          return;
-                        }
+                    // Botón de eliminación
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red[400],
+                        foregroundColor: Colors.white,
+                        minimumSize: Size(double.infinity, 50),
+                      ),
+                      onPressed: _modoEliminacionCombinada
+                          ? _eliminarAsistenciasCombinado
+                          : () async {
+                              if (_filtroSeleccionadoEliminar == 'Fecha') {
+                                final fechaInicial =
+                                    fechaInicialEliminarController.text;
+                                final fechaFinal =
+                                    fechaFinalEliminarController.text;
 
-                        // Filtrar asistencias
-                        _asistenciasFiltradasParaEliminar =
-                            asistenciaProvider.asistencias.where((a) {
-                          final cumpleCedula = _cedulaParaEliminar == null ||
-                              a.cedulaEmpleado == _cedulaParaEliminar;
-                          final cumpleFecha =
-                              a.horaEntrada.isAfter(fechaInicialDate) &&
-                                  a.horaEntrada.isBefore(fechaFinalDate);
-                          final cumpleSede = a.sedeId == _sedeId;
-                          final cumpleArea = a.areaId == _areaId;
-
-                          return cumpleCedula &&
-                              cumpleFecha &&
-                              cumpleSede &&
-                              cumpleArea;
-                        }).toList();
-
-                        // Mostrar diálogo de confirmación
-                        await showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text('Confirmar eliminación'),
-                            content: Text(
-                                '¿Eliminar ${_asistenciasFiltradasParaEliminar.length} asistencias?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: Text('Cancelar'),
-                              ),
-                              TextButton(
-                                onPressed: () async {
-                                  for (final asistencia
-                                      in _asistenciasFiltradasParaEliminar) {
-                                    await asistenciaProvider
-                                        .eliminarAsistencia(asistencia.id!);
-                                  }
-                                  Navigator.pop(context);
+                                if (fechaInicial.isEmpty ||
+                                    fechaFinal.isEmpty) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                         content: Text(
-                                            'Asistencias eliminadas correctamente')),
+                                            'Por favor, ingresa ambas fechas')),
                                   );
-                                  setState(() {
-                                    _asistenciasFiltradasParaEliminar = [];
-                                  });
-                                },
-                                child: Text('Eliminar',
-                                    style: TextStyle(color: Colors.red)),
-                              ),
-                            ],
-                          ),
-                        );
-                      } else {
-                        // Lógica para otros filtros (similar a la original)
-                        final filtro = _filtroEliminarController.text;
-                        if (_filtroSeleccionadoEliminar == 'Cédula') {
-                          await asistenciaProvider
-                              .eliminarAsistenciasPorCedula(filtro);
-                        } else if (_filtroSeleccionadoEliminar == 'Nombre') {
-                          final empleado =
-                              empleadoProvider.empleados.firstWhere(
-                            (emp) => emp.nombre
-                                .toLowerCase()
-                                .contains(filtro.toLowerCase()),
-                            orElse: () => Empleado(
-                              nombre: '',
-                              apellido: '',
-                              cedula: '',
-                              cargo: '',
-                              sedeId: '',
-                              areaId: '',
-                            ),
-                          );
+                                  return;
+                                }
 
-                          if (empleado.cedula.isNotEmpty) {
-                            await asistenciaProvider
-                                .eliminarAsistenciasPorCedula(empleado.cedula);
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Empleado no encontrado')),
-                            );
-                            return;
-                          }
-                        } else if (_filtroSeleccionadoEliminar == 'Cargo') {
-                          final empleadosFiltrados = empleadoProvider.empleados
-                              .where((emp) => emp.cargo
-                                  .toLowerCase()
-                                  .contains(filtro.toLowerCase()))
-                              .toList();
+                                final formatoEntrada = DateFormat('dd-MM-yyyy');
+                                final fechaInicialDate =
+                                    formatoEntrada.parse(fechaInicial);
+                                final fechaFinalDate =
+                                    formatoEntrada.parse(fechaFinal);
 
-                          if (empleadosFiltrados.isNotEmpty) {
-                            for (final empleado in empleadosFiltrados) {
-                              await asistenciaProvider
-                                  .eliminarAsistenciasPorCedula(
-                                      empleado.cedula);
-                            }
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                  content: Text(
-                                      'No se encontraron empleados con ese cargo')),
-                            );
-                            return;
-                          }
-                        }
+                                _asistenciasFiltradasParaEliminar =
+                                    asistenciaProvider.asistencias.where((a) {
+                                  final fechaAsistencia = a.horaEntrada;
+                                  return (fechaAsistencia
+                                              .isAfter(fechaInicialDate) ||
+                                          fechaAsistencia.isAtSameMomentAs(
+                                              fechaInicialDate)) &&
+                                      (fechaAsistencia
+                                              .isBefore(fechaFinalDate) ||
+                                          fechaAsistencia.isAtSameMomentAs(
+                                              fechaFinalDate));
+                                }).toList();
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content:
-                                  Text('Asistencias eliminadas correctamente')),
-                        );
-                      }
-                    },
-                    child: Text('Eliminar Asistencias'),
-                  ),
-                ],
+                                await _mostrarDialogoConfirmacionEliminacion();
+                              } else {
+                                final filtro = _filtroEliminarController.text;
+                                if (filtro.isEmpty) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content: Text(
+                                            'Ingrese un valor para filtrar')),
+                                  );
+                                  return;
+                                }
+                                await _eliminarPorFiltroIndividual();
+                              }
+                            },
+                      child: const Text('ELIMINAR ASISTENCIAS',
+                          style: TextStyle(fontSize: 16)),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Se requieren permisos de administrador para eliminar asistencias',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
-            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _mostrarDialogoConfirmacionEliminacion() async {
+    final confirmado = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Confirmar eliminación'),
+            content: Text(
+                '¿Estás seguro de eliminar ${_asistenciasFiltradasParaEliminar.length} asistencias?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child:
+                    const Text('Eliminar', style: TextStyle(color: Colors.red)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (confirmado) {
+      final asistenciaProvider =
+          Provider.of<AsistenciaProvider>(context, listen: false);
+      for (final asistencia in _asistenciasFiltradasParaEliminar) {
+        await asistenciaProvider.eliminarAsistencia(asistencia.id!);
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                '${_asistenciasFiltradasParaEliminar.length} asistencias eliminadas')),
+      );
+
+      setState(() {
+        _asistenciasFiltradasParaEliminar = [];
+      });
+    }
+  }
+
+  Future<void> _eliminarPorFiltroIndividual() async {
+    final asistenciaProvider =
+        Provider.of<AsistenciaProvider>(context, listen: false);
+    final empleadoProvider =
+        Provider.of<EmpleadoProvider>(context, listen: false);
+    final filtro = _filtroEliminarController.text;
+
+    try {
+      List<Asistencia> asistenciasAEliminar = [];
+
+      if (_filtroSeleccionadoEliminar == 'Cédula') {
+        asistenciasAEliminar =
+            await asistenciaProvider.getAsistenciasPorEmpleado(
+          filtro,
+          areaId: _areaId,
+        );
+      } else {
+        // Para otros filtros (Nombre, Cargo), primero buscamos los empleados que coincidan
+        final empleadosFiltrados = empleadoProvider.empleados.where((empleado) {
+          if (_filtroSeleccionadoEliminar == 'Nombre') {
+            final nombreCompleto = '${empleado.nombre} ${empleado.apellido}';
+            return nombreCompleto.toLowerCase().contains(filtro.toLowerCase());
+          } else if (_filtroSeleccionadoEliminar == 'Cargo') {
+            return empleado.cargo.toLowerCase().contains(filtro.toLowerCase());
+          }
+          return false;
+        }).toList();
+
+        // Obtenemos las asistencias de esos empleados
+        for (final empleado in empleadosFiltrados) {
+          final asistencias =
+              await asistenciaProvider.getAsistenciasPorEmpleado(
+            empleado.cedula,
+            areaId: _areaId,
+          );
+          asistenciasAEliminar.addAll(asistencias);
+        }
+      }
+
+      if (asistenciasAEliminar.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('No se encontraron asistencias para eliminar')),
+        );
+        return;
+      }
+
+      final confirmado = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Confirmar eliminación'),
+              content: Text(
+                  '¿Estás seguro de eliminar ${asistenciasAEliminar.length} asistencias?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Eliminar',
+                      style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+
+      if (confirmado) {
+        for (final asistencia in asistenciasAEliminar) {
+          await asistenciaProvider.eliminarAsistencia(asistencia.id!);
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  '${asistenciasAEliminar.length} asistencias eliminadas')),
+        );
+
+        setState(() {
+          _filtroEliminarController.clear();
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al eliminar: $e')),
+      );
+    }
   }
 
   Widget _buildRangoFechas(TextEditingController fechaInicialController,
@@ -654,5 +918,87 @@ class _GenerarReporteState extends State<GenerarReporte> {
   Future<void> _abrirArchivo(String filePath) async {
     final result = await OpenFile.open(filePath);
     print(result.message);
+  }
+
+  Widget _buildNoSedeSelected(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.business, size: 64, color: greenPalette[500]),
+          SizedBox(height: 20),
+          Text(
+            'No se ha seleccionado sede',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700],
+            ),
+          ),
+          SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, '/seleccionar_sede');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR SEDE',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoAreaSelected(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.work_outline, size: 64, color: greenPalette[500]),
+          SizedBox(height: 20),
+          Text(
+            'No se ha seleccionado área',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700],
+            ),
+          ),
+          SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, '/seleccionar_area');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR ÁREA',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -9,6 +9,10 @@ import 'sede_provider.dart';
 import 'area_provider.dart';
 import 'package:intl/intl.dart';
 
+const motorizadosAreaIdQuito = '96af2e36-cd65-42c1-b22e-47a5e53a7f9d';
+const motorizadosAreaIdGYE = 'f08b8d0d-ee48-4c36-91e8-723cb87e8986';
+final areasMotorizados = {motorizadosAreaIdQuito, motorizadosAreaIdGYE};
+
 class BuscarEmpleado extends StatefulWidget {
   @override
   _BuscarEmpleadoState createState() => _BuscarEmpleadoState();
@@ -16,6 +20,10 @@ class BuscarEmpleado extends StatefulWidget {
 
 class _BuscarEmpleadoState extends State<BuscarEmpleado> {
   final _cedulaController = TextEditingController();
+
+  bool _esAreaMotorizados(String areaId) {
+    return areasMotorizados.contains(areaId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +44,13 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
 
     final sedeActualId = sedeProvider.sedeActual!.id;
     final areaActualId = areaProvider.areaActual!.id;
+    final areaActualNombre = areaProvider.areaActual?.nombre ?? '';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Motorizados Procontacto'),
+        title: Text(_esAreaMotorizados(areaActualId)
+            ? 'Motorizados Procontacto'
+            : areaActualNombre),
         actions: [
           IconButton(
             icon: Icon(Icons.business),
@@ -56,18 +67,22 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                'assets/Logotrns.png',
-                width: 225,
-                height: 225,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(height: 5),
-              Text(
-                'Área actual: ${areaProvider.areaActual?.nombre ?? 'No seleccionada'}',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 5),
+              _esAreaMotorizados(areaActualId)
+                  ? Image.asset(
+                      'assets/Logotrns.png',
+                      width: 225,
+                      height: 225,
+                      fit: BoxFit.contain,
+                    )
+                  : Text(
+                      areaActualNombre,
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: greenPalette[700],
+                      ),
+                    ),
+              const SizedBox(height: 20),
               const Text(
                 'Ingresa tu número de cédula',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -163,15 +178,37 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.business, size: 64, color: Colors.grey),
+          Icon(Icons.business,
+              size: 64, color: greenPalette[500]), // Verde medio
           SizedBox(height: 20),
-          Text('No se ha seleccionado sede', style: TextStyle(fontSize: 18)),
-          SizedBox(height: 10),
+          Text(
+            'No se ha seleccionado sede',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700], // Verde oscuro para texto
+            ),
+          ),
+          SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
               Navigator.pushReplacementNamed(context, '/seleccionar_sede');
             },
-            child: Text('Seleccionar sede'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500], // Verde principal
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR SEDE',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -183,15 +220,37 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.work_outline, size: 64, color: Colors.grey),
+          Icon(Icons.work_outline,
+              size: 64, color: greenPalette[500]), // Verde medio
           SizedBox(height: 20),
-          Text('No se ha seleccionado área', style: TextStyle(fontSize: 18)),
-          SizedBox(height: 10),
+          Text(
+            'No se ha seleccionado área',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700], // Verde oscuro para texto
+            ),
+          ),
+          SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
               Navigator.pushReplacementNamed(context, '/seleccionar_area');
             },
-            child: Text('Seleccionar área'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500], // Verde principal
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR ÁREA',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

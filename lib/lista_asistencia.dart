@@ -7,7 +7,10 @@ import 'asistencia_provider.dart';
 import 'aistencia_model.dart';
 import 'sede_provider.dart';
 import 'area_provider.dart';
-import 'snackbar_service.dart'; // Asegúrate de crear este archivo
+import 'snackbar_service.dart';
+import 'themes.dart';
+import 'auth_provider.dart';
+import 'pin_auth_screen.dart';
 
 const motorizadosAreaIdQuito = '96af2e36-cd65-42c1-b22e-47a5e53a7f9d';
 
@@ -27,6 +30,15 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
     final areaProvider = Provider.of<AreaProvider>(context);
     final empleadoProvider = Provider.of<EmpleadoProvider>(context);
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    if (!authProvider.isAuthenticated) {
+      return PinAuthScreen(
+        moduleName: 'Asistencia',
+        destination: ListaAsistencia(),
+        areaId: areaProvider.areaActual?.id,
+      );
+    }
 
     if (sedeProvider.sedeActual == null) {
       return _buildNoSedeSelected(context);
@@ -48,8 +60,12 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-            'Asistencia - ${sedeProvider.sedeActual?.nombre ?? ''} - ${areaProvider.areaActual?.nombre ?? ''}'),
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Asistencia - ${sedeProvider.sedeActual?.nombre ?? ''} - ${areaProvider.areaActual?.nombre ?? ''}',
+          ),
+        ),
         actions: [
           IconButton(
             icon: Icon(Icons.calendar_today),
@@ -64,6 +80,15 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                   'Área: ${areaProvider.areaActual?.nombre ?? 'No seleccionada'}');
             },
           ),
+          if (authProvider.currentRole == 'supervisor')
+            IconButton(
+              icon: Icon(Icons.autorenew),
+              onPressed: () async {
+                await _actualizarDatos();
+                NotificationService.showSuccess('Datos actualizados');
+              },
+              tooltip: 'Actualizar datos',
+            ),
         ],
       ),
       body: RefreshIndicator(
@@ -112,15 +137,37 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.business, size: 64, color: Colors.grey),
+          Icon(Icons.business,
+              size: 64, color: greenPalette[500]), // Verde medio
           SizedBox(height: 20),
-          Text('No se ha seleccionado sede', style: TextStyle(fontSize: 18)),
-          SizedBox(height: 10),
+          Text(
+            'No se ha seleccionado sede',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700], // Verde oscuro para texto
+            ),
+          ),
+          SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
               Navigator.pushReplacementNamed(context, '/seleccionar_sede');
             },
-            child: Text('Seleccionar sede'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500], // Verde principal
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR SEDE',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -132,15 +179,37 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.work_outline, size: 64, color: Colors.grey),
+          Icon(Icons.work_outline,
+              size: 64, color: greenPalette[500]), // Verde medio
           SizedBox(height: 20),
-          Text('No se ha seleccionado área', style: TextStyle(fontSize: 18)),
-          SizedBox(height: 10),
+          Text(
+            'No se ha seleccionado área',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700], // Verde oscuro para texto
+            ),
+          ),
+          SizedBox(height: 20),
           ElevatedButton(
             onPressed: () {
               Navigator.pushReplacementNamed(context, '/seleccionar_area');
             },
-            child: Text('Seleccionar área'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500], // Verde principal
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR ÁREA',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

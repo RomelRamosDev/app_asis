@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'area_model.dart';
+import 'package:uuid/uuid.dart';
 
 class AreaProvider with ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -51,6 +52,16 @@ class AreaProvider with ChangeNotifier {
       await cargarAreas();
     } catch (e) {
       debugPrint('Error agregando área: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> eliminarArea(String id) async {
+    try {
+      await _supabase.from('areas').delete().eq('id', id);
+      await cargarAreas();
+    } catch (e) {
+      debugPrint('Error eliminando área: $e');
       rethrow;
     }
   }

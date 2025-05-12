@@ -7,6 +7,8 @@ import 'area_provider.dart';
 import 'area_model.dart';
 import 'main.dart';
 import 'themes.dart';
+import 'auth_provider.dart';
+import 'pin_auth_screen.dart';
 
 class ListaEmpleados extends StatelessWidget {
   @override
@@ -14,7 +16,23 @@ class ListaEmpleados extends StatelessWidget {
     final sedeProvider = Provider.of<SedeProvider>(context);
     final areaProvider = Provider.of<AreaProvider>(context);
     final empleadoProvider = Provider.of<EmpleadoProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
 
+    if (!authProvider.isAuthenticated) {
+      return PinAuthScreen(
+        moduleName: 'Empleados',
+        destination: ListaEmpleados(),
+        areaId: areaProvider.areaActual?.id,
+      );
+    }
+
+    if (sedeProvider.sedeActual == null) {
+      return _buildNoSedeSelected(context);
+    }
+
+    if (areaProvider.areaActual == null) {
+      return _buildNoAreaSelected(context);
+    }
     // Filtrar empleados por sede y área actual
     final empleados = empleadoProvider.empleados.where((empleado) {
       final cumpleSede = empleado.sedeId == sedeProvider.sedeActual?.id;
@@ -52,6 +70,14 @@ class ListaEmpleados extends StatelessWidget {
               Navigator.pushReplacementNamed(context, '/seleccionar_sede');
             },
           ),
+          if (authProvider.currentRole == 'admin')
+            IconButton(
+              icon: Icon(Icons.add),
+              onPressed: () {
+                Navigator.pushNamed(context, '/empleado_form');
+              },
+              tooltip: 'Agregar nuevo empleado',
+            ),
         ],
       ),
       body: Builder(
@@ -110,15 +136,16 @@ class ListaEmpleados extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: sedeProvider.sedeActual != null
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.pushNamed(context, '/empleado_form');
-              },
-              child: Icon(Icons.add),
-              tooltip: 'Agregar nuevo empleado',
-            )
-          : null,
+      floatingActionButton:
+          sedeProvider.sedeActual != null && authProvider.currentRole == 'admin'
+              ? FloatingActionButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/empleado_form');
+                  },
+                  child: Icon(Icons.add),
+                  tooltip: 'Agregar nuevo empleado',
+                )
+              : null,
     );
   }
 
@@ -182,11 +209,24 @@ class ListaEmpleados extends StatelessWidget {
               Text('Cédula: ${empleado.cedula}'),
               Text('Cargo: ${empleado.cargo}'),
               Text('Área: ${areaEmpleado.nombre}'),
-              if (empleado.enVacaciones) ...[
+              if (empleado.enVacaciones || empleado.enPermisoMedico) ...[
                 SizedBox(height: 4),
-                Chip(
-                  label: Text('EN VACACIONES', style: TextStyle(fontSize: 12)),
-                  backgroundColor: Colors.blue[100],
+                Wrap(
+                  spacing: 4,
+                  children: [
+                    if (empleado.enVacaciones)
+                      Chip(
+                        label: Text('EN VACACIONES',
+                            style: TextStyle(fontSize: 12)),
+                        backgroundColor: Colors.blue[100],
+                      ),
+                    if (empleado.enPermisoMedico)
+                      Chip(
+                        label: Text('PERMISO MÉDICO',
+                            style: TextStyle(fontSize: 12)),
+                        backgroundColor: Colors.orange[100],
+                      ),
+                  ],
                 ),
               ],
             ],
@@ -207,6 +247,88 @@ class ListaEmpleados extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildNoSedeSelected(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.business, size: 64, color: greenPalette[500]),
+          SizedBox(height: 20),
+          Text(
+            'No se ha seleccionado sede',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700],
+            ),
+          ),
+          SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, '/seleccionar_sede');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR SEDE',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoAreaSelected(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.work_outline, size: 64, color: greenPalette[500]),
+          SizedBox(height: 20),
+          Text(
+            'No se ha seleccionado área',
+            style: TextStyle(
+              fontSize: 18,
+              color: greenPalette[700],
+            ),
+          ),
+          SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pushReplacementNamed(context, '/seleccionar_area');
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: greenPalette[500],
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              elevation: 3,
+            ),
+            child: Text(
+              'SELECCIONAR ÁREA',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'asistencia_provider.dart';
 import 'empleado_model.dart';
 import 'empleado_provider.dart';
@@ -15,6 +16,8 @@ import 'area_model.dart';
 import 'area_provider.dart';
 import 'seleccionar_area.dart';
 import 'snackbar_service.dart';
+import 'auth_provider.dart';
+import 'pin_auth_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,19 +27,36 @@ void main() async {
     anonKey: anonKey,
   );
 
+  await SharedPreferences.getInstance();
   // Inicializar providers
   final empleadoProvider = EmpleadoProvider();
   final asistenciaProvider = AsistenciaProvider();
   final sedeProvider = SedeProvider();
   final areaProvider = AreaProvider();
+  final authProvider = AuthProvider();
 
   // Cargar datos iniciales
   await areaProvider.cargarAreas();
   await sedeProvider.cargarSedes();
   await empleadoProvider.cargarEmpleados();
   await asistenciaProvider.cargarAsistencias();
+  await authProvider.autoLogin();
 
-  if (sedeProvider.sedeActual != null && areaProvider.areas.isNotEmpty) {
+  if (authProvider.isAuthenticated && authProvider.currentAreaId != null) {
+    try {
+      final area = areaProvider.areas.firstWhere(
+        (a) => a.id == authProvider.currentAreaId,
+      );
+      areaProvider.seleccionarArea(area);
+
+      final sede = sedeProvider.sedes.firstWhere(
+        (s) => s.id == area.sedeId,
+      );
+      sedeProvider.seleccionarSede(sede);
+    } catch (e) {
+      debugPrint('Error configurando sede/área desde auth: $e');
+    }
+  } else if (sedeProvider.sedeActual != null && areaProvider.areas.isNotEmpty) {
     final areasDeSede = areaProvider.areasPorSede(sedeProvider.sedeActual!.id);
     if (areasDeSede.isNotEmpty) {
       areaProvider.seleccionarArea(areasDeSede.first);
@@ -52,6 +72,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => sedeProvider),
         ChangeNotifierProvider(create: (_) => empleadoProvider),
         ChangeNotifierProvider(create: (_) => asistenciaProvider),
+        ChangeNotifierProvider(create: (_) => authProvider),
       ],
       child: const MyApp(),
     ),
@@ -66,6 +87,7 @@ class MyApp extends StatelessWidget {
     _iniciarServicioMarcacionAutomatica(context);
     final sedeActual = Provider.of<SedeProvider>(context).sedeActual;
     final areaActual = Provider.of<AreaProvider>(context).areaActual;
+    final authProvider = Provider.of<AuthProvider>(context);
 
     return MaterialApp(
       scaffoldMessengerKey: NotificationService.key,
@@ -82,7 +104,14 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: sedeActual == null ? SeleccionarSedeScreen() : HomeNavigation(),
+      home: sedeActual == null
+          ? SeleccionarSedeScreen()
+          : authProvider.isAuthenticated
+              ? HomeNavigation()
+              : PinAuthScreen(
+                  moduleName: 'Inicio',
+                  destination: HomeNavigation(),
+                ),
       debugShowCheckedModeBanner: false,
       routes: {
         '/seleccionar_sede': (context) => SeleccionarSedeScreen(),
@@ -109,6 +138,7 @@ class EmpleadoFormWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sedeActual = Provider.of<SedeProvider>(context).sedeActual;
+    final authProvider = Provider.of<AuthProvider>(context);
 
     if (sedeActual == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -120,7 +150,12 @@ class EmpleadoFormWrapper extends StatelessWidget {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    return EmpleadoForm(sedeId: sedeActual.id);
+    return authProvider.isAuthenticated
+        ? EmpleadoForm(sedeId: sedeActual.id)
+        : PinAuthScreen(
+            moduleName: 'Formulario de Empleado',
+            destination: EmpleadoForm(sedeId: sedeActual.id),
+          );
   }
 }
 
@@ -143,8 +178,9 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
   final _nombreController = TextEditingController();
   final _apellidoController = TextEditingController();
   final _cedulaController = TextEditingController();
-  String _cargoSeleccionado = 'Mensajero';
-  String _areaId = ''; // Inicializado como string vacío
+  String? _cargoSeleccionado;
+  late String
+      _areaId; // Cambiamos a late ya que siempre se inicializa en didChangeDependencies
 
   @override
   void didChangeDependencies() {
@@ -161,6 +197,16 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
     } else {
       // Asignar área actual por defecto
       _areaId = areaProvider.areaActual?.id ?? '';
+      // Si estamos creando nuevo empleado, cargamos el primer cargo disponible
+      if (_areaId.isNotEmpty && _cargoSeleccionado == null) {
+        final area = areaProvider.areas.firstWhere(
+          (a) => a.id == _areaId,
+          orElse: () => Area(id: '', nombre: '', sedeId: ''),
+        );
+        if (area.cargos != null && area.cargos!.isNotEmpty) {
+          _cargoSeleccionado = area.cargos!.first;
+        }
+      }
     }
   }
 
@@ -170,30 +216,33 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
     final areaProvider = Provider.of<AreaProvider>(context);
     final sedeProvider = Provider.of<SedeProvider>(context);
 
-    final areas = areaProvider.areas
-        .where((area) => area.sedeId == sedeProvider.sedeActual?.id)
-        .toList();
+    // Obtenemos el área actual para mostrar su nombre
+    final areaActual = areaProvider.areas.firstWhere(
+      (a) => a.id == _areaId,
+      orElse: () => Area(id: '', nombre: 'Área no seleccionada', sedeId: ''),
+    );
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(
             widget.empleado == null ? 'Registrar Empleado' : 'Editar Empleado'),
         actions: [
           IconButton(
             icon: const Icon(Icons.work_outline),
-            tooltip:
-                'Área actual: ${areaProvider.areaActual?.nombre ?? 'No seleccionada'}',
+            tooltip: 'Área actual: ${areaActual.nombre}',
             onPressed: () {
               Navigator.pushNamed(context, '/seleccionar_area');
             },
           ),
         ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
-          child: Column(
+          child: ListView(
+            shrinkWrap: true,
             children: [
               TextFormField(
                 controller: _nombreController,
@@ -233,48 +282,62 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
                   return null;
                 },
               ),
-              DropdownButtonFormField<String>(
-                value: _cargoSeleccionado,
-                decoration: const InputDecoration(labelText: 'Cargo'),
-                items: <String>['Mensajero', 'Supervisor', 'Call Center']
-                    .map<DropdownMenuItem<String>>((String valor) {
-                  return DropdownMenuItem<String>(
-                    value: valor,
-                    child: Text(valor),
-                  );
-                }).toList(),
-                onChanged: (String? nuevoValor) {
-                  setState(() {
-                    _cargoSeleccionado = nuevoValor!;
-                  });
-                },
-              ),
-              DropdownButtonFormField<String>(
-                value: _areaId.isEmpty ? null : _areaId,
-                decoration: const InputDecoration(labelText: 'Área'),
-                items: [
-                  const DropdownMenuItem<String>(
-                    value: '',
-                    child: Text('Seleccione un área',
-                        style: TextStyle(color: Colors.grey)),
+
+              // Campo de Área (solo lectura)
+              InputDecorator(
+                decoration: InputDecoration(
+                  labelText: 'Área',
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor:
+                      Colors.grey[200], // Fondo gris para indicar solo lectura
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  child: Text(
+                    areaActual.nombre,
+                    style: TextStyle(fontSize: 16),
                   ),
-                  ...areas
-                      .map((area) => DropdownMenuItem<String>(
-                            value: area.id,
-                            child: Text(area.nombre),
-                          ))
-                      .toList(),
-                ],
-                onChanged: (value) {
-                  setState(() => _areaId = value ?? '');
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Por favor, seleccione un área';
-                  }
-                  return null;
-                },
+                ),
               ),
+              SizedBox(height: 10),
+
+              // Dropdown de Cargos (solo se muestra si hay área seleccionada)
+              _areaId.isNotEmpty
+                  ? DropdownButtonFormField<String>(
+                      value: _cargoSeleccionado,
+                      decoration: const InputDecoration(
+                        labelText: 'Cargo*',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: areaProvider.areas
+                              .firstWhere(
+                                (a) => a.id == _areaId,
+                                orElse: () =>
+                                    Area(id: '', nombre: '', sedeId: ''),
+                              )
+                              .cargos
+                              ?.map<DropdownMenuItem<String>>(
+                                (cargo) => DropdownMenuItem<String>(
+                                  value: cargo,
+                                  child: Text(cargo),
+                                ),
+                              )
+                              .toList() ??
+                          [],
+                      onChanged: (String? value) {
+                        setState(() => _cargoSeleccionado = value);
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty)
+                          return 'Seleccione un cargo';
+                        return null;
+                      },
+                    )
+                  : const Text(
+                      'No hay área seleccionada. Seleccione un área primero.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
               const SizedBox(height: 20),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
@@ -288,9 +351,9 @@ class _EmpleadoFormState extends State<EmpleadoForm> {
                       nombre: _nombreController.text,
                       apellido: _apellidoController.text,
                       cedula: _cedulaController.text,
-                      cargo: _cargoSeleccionado,
+                      cargo: _cargoSeleccionado ?? '',
                       sedeId: widget.sedeId,
-                      areaId: _areaId, // Usamos el valor actual
+                      areaId: _areaId,
                     );
 
                     if (widget.empleado == null) {
