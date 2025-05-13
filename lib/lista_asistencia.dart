@@ -80,6 +80,18 @@ class _ListaAsistenciaState extends State<ListaAsistencia> {
                   'Área: ${areaProvider.areaActual?.nombre ?? 'No seleccionada'}');
             },
           ),
+          if (authProvider.isAuthenticated)
+            IconButton(
+              icon: Icon(Icons.logout),
+              onPressed: () async {
+                await authProvider.logout();
+                setState(() {
+                  Navigator.pushReplacementNamed(context,
+                      '/seleccionar_sede'); // Volver a pantalla de búsqueda
+                });
+              },
+              tooltip: 'Cerrar sesión',
+            ),
           if (authProvider.currentRole == 'supervisor')
             IconButton(
               icon: Icon(Icons.autorenew),

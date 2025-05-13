@@ -70,14 +70,33 @@ class ListaEmpleados extends StatelessWidget {
               Navigator.pushReplacementNamed(context, '/seleccionar_sede');
             },
           ),
-          if (authProvider.currentRole == 'admin')
-            IconButton(
-              icon: Icon(Icons.add),
-              onPressed: () {
-                Navigator.pushNamed(context, '/empleado_form');
-              },
-              tooltip: 'Agregar nuevo empleado',
-            ),
+          Consumer<AuthProvider>(
+            builder: (context, authProvider, child) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (authProvider.currentRole == 'admin')
+                    IconButton(
+                      icon: Icon(Icons.add),
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/empleado_form');
+                      },
+                      tooltip: 'Agregar nuevo empleado',
+                    ),
+                  if (authProvider.isAuthenticated)
+                    IconButton(
+                      icon: Icon(Icons.logout),
+                      onPressed: () async {
+                        await authProvider.logout();
+                        Navigator.pushReplacementNamed(
+                            context, '/seleccionar_sede');
+                      },
+                      tooltip: 'Cerrar sesión',
+                    ),
+                ],
+              );
+            },
+          ),
         ],
       ),
       body: Builder(

@@ -6,13 +6,17 @@ import 'package:app_asis/themes.dart';
 class PinAuthScreen extends StatefulWidget {
   final String moduleName;
   final Widget destination;
-  final String? areaId; // Área específica para restricción
+  final String? areaId;
+  final bool keepNavigation;
+
+  // Área específica para restricción
 
   const PinAuthScreen({
     Key? key,
     required this.moduleName,
     required this.destination,
     this.areaId,
+    this.keepNavigation = false,
   }) : super(key: key);
 
   @override
@@ -234,6 +238,24 @@ class _PinAuthScreenState extends State<PinAuthScreen> {
           ),
         ),
       ),
+      bottomNavigationBar: widget.keepNavigation
+          ? BottomNavigationBar(
+              items: [
+                const BottomNavigationBarItem(
+                    icon: Icon(Icons.search), label: 'Buscar'),
+                const BottomNavigationBarItem(
+                    icon: Icon(Icons.people), label: 'Empleados'),
+                const BottomNavigationBarItem(
+                    icon: Icon(Icons.assignment), label: 'Asistencia'),
+                const BottomNavigationBarItem(
+                    icon: Icon(Icons.description), label: 'Reportes'),
+              ],
+              currentIndex: 0,
+              onTap: (index) {
+                // Lógica de navegación
+              },
+            )
+          : null,
     );
   }
 }

@@ -63,22 +63,6 @@ class _HomeNavigationState extends State<HomeNavigation> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Sistema de Asistencias'),
-        actions: [
-          if (authProvider.isAuthenticated)
-            IconButton(
-              icon: Icon(Icons.logout),
-              onPressed: () async {
-                await authProvider.logout();
-                setState(() {
-                  _selectedIndex = 0; // Volver a pantalla de búsqueda
-                });
-              },
-              tooltip: 'Cerrar sesión',
-            ),
-        ],
-      ),
       body: _selectedIndex == 0
           ? _screens[0] // Pantalla de búsqueda siempre accesible
           : authProvider.isAuthenticated

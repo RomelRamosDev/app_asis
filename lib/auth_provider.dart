@@ -30,6 +30,8 @@ class AuthProvider with ChangeNotifier {
 
       if (response != null) {
         // Si es admin, permitir acceso sin verificar restricciones
+        final hasAccess = await _checkModuleAccess(response['id'], module);
+
         if (response['role'] == 'admin') {
           _setAuthState(response);
           await _logAccess(response['id'], module, true);

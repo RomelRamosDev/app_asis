@@ -8,6 +8,7 @@ import 'themes.dart';
 import 'sede_provider.dart';
 import 'area_provider.dart';
 import 'package:intl/intl.dart';
+import 'auth_provider.dart';
 
 const motorizadosAreaIdQuito = '96af2e36-cd65-42c1-b22e-47a5e53a7f9d';
 const motorizadosAreaIdGYE = 'f08b8d0d-ee48-4c36-91e8-723cb87e8986';
@@ -31,6 +32,7 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
     final asistenciaProvider = Provider.of<AsistenciaProvider>(context);
     final sedeProvider = Provider.of<SedeProvider>(context);
     final areaProvider = Provider.of<AreaProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
 
     // Verificar primero si hay sede seleccionada
     if (sedeProvider.sedeActual == null) {
@@ -59,6 +61,18 @@ class _BuscarEmpleadoState extends State<BuscarEmpleado> {
               Navigator.pushReplacementNamed(context, '/seleccionar_sede');
             },
           ),
+          if (authProvider.isAuthenticated)
+            IconButton(
+              icon: Icon(Icons.logout),
+              onPressed: () async {
+                await authProvider.logout();
+                setState(() {
+                  Navigator.pushReplacementNamed(context,
+                      '/seleccionar_sede'); // Volver a pantalla de búsqueda
+                });
+              },
+              tooltip: 'Cerrar sesión',
+            ),
         ],
       ),
       body: Center(

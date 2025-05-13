@@ -232,6 +232,15 @@ class _GenerarReporteState extends State<GenerarReporte> {
                 // Configuración avanzada de reportes para admins
               },
             ),
+          if (authProvider.isAuthenticated)
+            IconButton(
+              icon: Icon(Icons.logout),
+              onPressed: () async {
+                await authProvider.logout();
+                Navigator.pushReplacementNamed(context, '/seleccionar_sede');
+              },
+              tooltip: 'Cerrar sesión',
+            ),
         ],
       ),
       body: SingleChildScrollView(
